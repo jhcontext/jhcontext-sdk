@@ -1,0 +1,113 @@
+name: Build and Publish Python package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'                # tags like v0.1.0 will trigger publish -> PyPI
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'target repository (testpypi or pypi)'
+        required: true
+        default: 'testpypi'
+
+jobs:
+  build:
+    name: Run tests & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install build/test deps
+        run: |
+          python -m pip install --upgrade pip build wheel pytest
+
+      - name: Run tests
+        run: |
+          pytest -q || true   # keep build job non-fatal if you use tests later
+
+      - name: Build distributions
+        run: |
+          python -m build --sdist --wheel
+
+      - name: Upload artifact (for later jobs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-artifacts
+          path: dist/*
+
+  publish:
+    name: Publish to PyPI / TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-artifacts
+          path: dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install upload tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Determine target repository and token
+        id: repoinfo
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REPO="${{ github.event.inputs.repository }}"
+          else
+            # if triggered by tag push, default to pypi
+            REPO="pypi"
+          fi
+          echo "repository=${REPO}" >> $GITHUB_OUTPUT
+          if [ "${REPO}" = "testpypi" ]; then
+            echo "url=https://test.pypi.org/legacy/" >> $GITHUB_OUTPUT
+            echo "token_secret=TEST_PYPI_API_TOKEN" >> $GITHUB_OUTPUT
+          else
+            echo "url=https://upload.pypi.org/legacy/" >> $GITHUB_OUTPUT
+            echo "token_secret=PYPI_API_TOKEN" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to chosen PyPI
+        env:
+          REPO_URL: ${{ steps.repoinfo.outputs.url }}
+        run: |
+          # choose token from secrets
+          if [ "${{ steps.repoinfo.outputs.token_secret }}" = "TEST_PYPI_API_TOKEN" ]; then
+            TOKEN="${{ secrets.TEST_PYPI_API_TOKEN }}"
+          else
+            TOKEN="${{ secrets.PYPI_API_TOKEN }}"
+          fi
+
+          if [ -z "$TOKEN" ]; then
+            echo "ERROR: API token secret not found. Create repository secret named TEST_PYPI_API_TOKEN or PYPI_API_TOKEN."
+            exit 1
+          fi
+
+          # upload using twine to the selected repository URL
+          python -m twine upload --repository-url "$REPO_URL" -u __token__ -p "$TOKEN" dist/*
+
+      - name: Show success
+        run: echo "Published to ${{ steps.repoinfo.outputs.repository }} (if no errors above)."

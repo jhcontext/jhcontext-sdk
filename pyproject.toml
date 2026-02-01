@@ -1,0 +1,15 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "jhcontext"
+version = "0.0.1"
+description = "Minimal jhcontext SDK for drafts and testing"
+authors = ["jhcontext@noreply.com"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{ include = "jhcontext" }]
+
+[tool.poetry.dependencies]
+python = "^3.9"
