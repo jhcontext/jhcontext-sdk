@@ -44,6 +44,10 @@ async def export_compliance_package(context_id: str):
                 "context_id": context_id,
                 "envelope_hash": envelope.proof.content_hash,
                 "prov_digest": prov.digest() if turtle else None,
+                "pii_status": {
+                    "detached": envelope.privacy.pii_detached,
+                    "feature_suppression": envelope.privacy.feature_suppression,
+                },
                 "generated_at": report.timestamp,
             }, indent=2),
         )

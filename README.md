@@ -30,7 +30,8 @@ jhcontext/
 ├── models.py          # Pydantic v2 data models (Envelope, Artifact, Decision, ...)
 ├── builder.py         # EnvelopeBuilder — fluent API for constructing envelopes
 ├── prov.py            # PROVGraph — W3C PROV graph builder (rdflib)
-├── audit.py           # Compliance verification (temporal oversight, negative proof, isolation)
+├── pii.py             # PII detection, tokenization, detachment (GDPR Art. 5/17)
+├── audit.py           # Compliance verification (temporal oversight, negative proof, isolation, PII)
 ├── crypto.py          # SHA-256 hashing, Ed25519 signing (HMAC fallback)
 ├── canonicalize.py    # Deterministic JSON serialization
 ├── semantics.py       # UserML semantic payload helpers
@@ -42,7 +43,8 @@ jhcontext/
     ├── mcp_server.py   # MCP server (stdio transport)
     ├── routes/         # REST API routes (envelopes, artifacts, decisions, provenance, compliance)
     └── storage/
-        └── sqlite.py   # SQLite backend (zero-config, ~/.jhcontext/)
+        ├── sqlite.py   # SQLite backend (zero-config, ~/.jhcontext/)
+        └── pii_vault.py # Separate PII vault (GDPR erasure support)
 ```
 
 ## Quick Start
@@ -143,6 +145,53 @@ report = generate_audit_report(env, prov, [result1, result2, result3])
 print(report.to_dict())
 ```
 
+### PII Detachment (GDPR Art. 5/17)
+
+Tokenize personal data in semantic payloads before storage. PII is stored in a separate vault linked by `context_id`, enabling independent erasure without breaking audit trails.
+
+```python
+from jhcontext import EnvelopeBuilder, verify_pii_detachment, verify_integrity
+from jhcontext.pii import InMemoryPIIVault, reattach_pii
+
+vault = InMemoryPIIVault()
+
+# Build with PII detachment
+env = (
+    EnvelopeBuilder()
+    .set_producer("did:example:triage-agent")
+    .set_scope("healthcare")
+    .set_semantic_payload([
+        {"patient_name": "Alice Johnson", "patient_email": "alice@hospital.org",
+         "diagnosis": "mild concussion", "recommendation": "24h observation"},
+    ])
+    .set_privacy(feature_suppression=["patient_name", "patient_email"])
+    .enable_pii_detachment(vault=vault)
+    .sign("did:example:triage-agent")
+    .build()
+)
+
+# PII is tokenized
+print(env.semantic_payload[0]["patient_name"])   # pii:tok-a1b2c3d4e5f6
+print(env.semantic_payload[0]["diagnosis"])       # mild concussion (not PII)
+
+# Audit: verify no PII leaks
+assert verify_pii_detachment(env).passed
+assert verify_integrity(env).passed
+
+# GDPR Art. 17 erasure
+vault.purge_by_context(env.context_id)
+
+# Audit trail survives — hash covers detached payload
+assert verify_integrity(env).passed
+
+# Reattach (gracefully fails after purge — tokens remain)
+resolved = reattach_pii(env.semantic_payload, vault)
+```
+
+The `feature_suppression` field in the privacy block specifies which fields are always tokenized. The `DefaultPIIDetector` also scans all string values for common PII patterns (emails, phones, IPs, SSNs).
+
+For persistent storage, use `SQLitePIIVault` (from `jhcontext.server.storage.pii_vault`) — it stores PII in a separate database file that can be encrypted or deleted independently.
+
 ### Start the server
 
 ```bash
@@ -190,7 +239,8 @@ pytest tests/ --ignore=tests/test_example.py -v
 | **Artifact** | Registered data object (embedding, token sequence, tool result) with content hash |
 | **PROVGraph** | W3C PROV provenance graph (entities, activities, agents, relations) |
 | **Proof** | Cryptographic integrity: canonical hash + Ed25519/HMAC signature |
-| **Audit** | Compliance checks: temporal oversight, negative proof, workflow isolation |
+| **Audit** | Compliance checks: temporal oversight, negative proof, workflow isolation, PII detachment |
+| **PII Detachment** | Tokenize PII before storage; separate vault enables GDPR erasure without breaking audit trails |
 | **UserML** | Semantic payload format: observation → interpretation → situation layers |
 
 ## Protocol

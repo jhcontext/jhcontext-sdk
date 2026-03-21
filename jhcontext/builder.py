@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import (
     Artifact,
@@ -18,12 +18,19 @@ from .models import (
 from .crypto import compute_sha256
 from .canonicalize import canonicalize
 
+if TYPE_CHECKING:
+    from .pii import PIIDetector, PIIVault
+
 
 class EnvelopeBuilder:
     """Fluent API for constructing PAC-AI envelopes."""
 
     def __init__(self) -> None:
         self._envelope = Envelope()
+        self._pii_detector: PIIDetector | None = None
+        self._pii_vault: PIIVault | None = None
+        self._pii_enabled: bool = False
+        self._signer_did: str | None = None
 
     def set_producer(self, producer_did: str) -> EnvelopeBuilder:
         self._envelope.producer = producer_did
@@ -138,13 +145,62 @@ class EnvelopeBuilder:
         )
         return self
 
+    def enable_pii_detachment(
+        self,
+        detector: PIIDetector | None = None,
+        vault: PIIVault | None = None,
+    ) -> EnvelopeBuilder:
+        """Enable PII detachment during build().
+
+        If *detector* is ``None``, a :class:`DefaultPIIDetector` is created
+        using the ``feature_suppression`` fields from the privacy block.
+        If *vault* is ``None``, an :class:`InMemoryPIIVault` is used.
+        """
+        self._pii_enabled = True
+        self._pii_detector = detector
+        self._pii_vault = vault
+        return self
+
     def sign(self, signer_did: str) -> EnvelopeBuilder:
-        from .crypto import sign_envelope
-        self._envelope.proof = sign_envelope(self._envelope, signer_did)
+        """Mark the envelope for signing. Actual signing is deferred to build()
+        so that PII detachment (which modifies the payload) happens first."""
+        self._signer_did = signer_did
         return self
 
     def build(self) -> Envelope:
-        """Build and return the envelope. Computes content hash if not signed."""
+        """Build and return the envelope.
+
+        Order of operations:
+        1. PII detachment (if enabled) — modifies semantic_payload
+        2. Signing (if requested) — computes hash + signature on final payload
+        3. Content hash (if not signed) — computes hash only
+        """
+        # Step 1: PII detachment
+        should_detach = self._pii_enabled or bool(
+            self._envelope.privacy.feature_suppression
+        )
+
+        if should_detach and not self._envelope.privacy.pii_detached:
+            from .pii import DefaultPIIDetector, InMemoryPIIVault, detach_pii
+
+            detector = self._pii_detector or DefaultPIIDetector(
+                suppressed_fields=self._envelope.privacy.feature_suppression,
+            )
+            vault = self._pii_vault or InMemoryPIIVault()
+            self._envelope.semantic_payload = detach_pii(
+                self._envelope.semantic_payload,
+                self._envelope.context_id,
+                detector,
+                vault,
+            )
+            self._envelope.privacy.pii_detached = True
+
+        # Step 2: Sign (deferred from .sign() call)
+        if self._signer_did and not self._envelope.proof.signature:
+            from .crypto import sign_envelope
+            self._envelope.proof = sign_envelope(self._envelope, self._signer_did)
+
+        # Step 3: Content hash fallback (if not signed)
         if not self._envelope.proof.content_hash:
             canonical = canonicalize(self._envelope.to_jsonld(include_proof=False))
             self._envelope.proof.content_hash = compute_sha256(

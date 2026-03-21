@@ -76,6 +76,8 @@ class PrivacyBlock(BaseModel):
     retention: str = "P7D"
     storage_policy: str = "centralized-encrypted"
     feature_suppression: list[str] = Field(default_factory=list)
+    pii_detached: bool = False
+    pii_vault_ref: str | None = None
 
 
 class ComplianceBlock(BaseModel):

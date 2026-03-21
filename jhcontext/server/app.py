@@ -6,9 +6,11 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from .storage.sqlite import SQLiteStorage
+from .storage.pii_vault import SQLitePIIVault
 
 
 _storage: SQLiteStorage | None = None
+_pii_vault: SQLitePIIVault | None = None
 
 
 def get_storage() -> SQLiteStorage:
@@ -18,21 +20,27 @@ def get_storage() -> SQLiteStorage:
     return _storage
 
 
-def create_app(db_path: str | None = None) -> Any:
+def get_pii_vault() -> SQLitePIIVault | None:
+    return _pii_vault
+
+
+def create_app(db_path: str | None = None, pii_vault_path: str | None = None) -> Any:
     """Create FastAPI app. Import guarded for optional dependency."""
     from fastapi import FastAPI
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        global _storage
+        global _storage, _pii_vault
         _storage = SQLiteStorage(db_path=db_path)
+        _pii_vault = SQLitePIIVault(db_path=pii_vault_path)
         yield
         _storage.close()
+        _pii_vault.close()
 
     app = FastAPI(
         title="jhcontext Server",
         description="PAC-AI: Protocol for Auditable Context in AI",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
 
@@ -46,6 +54,6 @@ def create_app(db_path: str | None = None) -> Any:
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "version": "0.2.0"}
+        return {"status": "ok", "version": "0.3.0"}
 
     return app

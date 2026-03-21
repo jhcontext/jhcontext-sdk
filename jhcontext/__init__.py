@@ -31,14 +31,26 @@ from .audit import (
     generate_audit_report,
     verify_integrity,
     verify_negative_proof,
+    verify_pii_detachment,
     verify_temporal_oversight,
     verify_workflow_isolation,
+)
+from .pii import (
+    DefaultPIIDetector,
+    InMemoryPIIVault,
+    PIIDetector,
+    PIIMatch,
+    PIIVault,
+    detach_pii,
+    is_pii_token,
+    reattach_pii,
+    tokenize_value,
 )
 from .crypto import compute_sha256, compute_content_hash, sign_envelope, verify_envelope
 from .canonicalize import canonicalize
 from .semantics import observation, interpretation, situation, userml_payload
 
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 __all__ = [
     # Models
@@ -51,8 +63,11 @@ __all__ = [
     "PROVGraph",
     # Audit
     "AuditReport", "AuditResult", "generate_audit_report",
-    "verify_integrity", "verify_negative_proof", "verify_temporal_oversight",
-    "verify_workflow_isolation",
+    "verify_integrity", "verify_negative_proof", "verify_pii_detachment",
+    "verify_temporal_oversight", "verify_workflow_isolation",
+    # PII
+    "DefaultPIIDetector", "InMemoryPIIVault", "PIIDetector", "PIIMatch", "PIIVault",
+    "detach_pii", "is_pii_token", "reattach_pii", "tokenize_value",
     # Crypto
     "compute_sha256", "compute_content_hash", "sign_envelope", "verify_envelope",
     # Utilities

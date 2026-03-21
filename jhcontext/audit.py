@@ -193,6 +193,49 @@ def verify_integrity(envelope: Envelope) -> AuditResult:
     )
 
 
+def verify_pii_detachment(
+    envelope: Envelope,
+    detector: Any | None = None,
+) -> AuditResult:
+    """Verify that no PII remains in the stored envelope's semantic_payload.
+
+    Scans all string values in the payload for PII patterns.
+    Passes if ``pii_detached`` is True AND no PII patterns are detected.
+    """
+    from .pii import DefaultPIIDetector
+
+    if not envelope.privacy.pii_detached:
+        return AuditResult(
+            check_name="pii_detachment",
+            passed=False,
+            message="Envelope not marked as PII-detached",
+            evidence={"pii_detached": False},
+        )
+
+    det = detector or DefaultPIIDetector(
+        suppressed_fields=envelope.privacy.feature_suppression,
+    )
+    matches = det.scan_payload(envelope.semantic_payload)
+
+    return AuditResult(
+        check_name="pii_detachment",
+        passed=len(matches) == 0,
+        evidence={
+            "pii_detached": True,
+            "residual_pii_count": len(matches),
+            "residual_pii": [
+                {"field_path": m.field_path, "type": m.detection_type}
+                for m in matches
+            ],
+        },
+        message=(
+            "PII detachment verified: no personal data in payload"
+            if not matches
+            else f"PII LEAK: {len(matches)} residual PII occurrences found"
+        ),
+    )
+
+
 def generate_audit_report(
     envelope: Envelope,
     prov: PROVGraph,
