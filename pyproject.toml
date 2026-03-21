@@ -1,15 +1,62 @@
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry]
+[project]
 name = "jhcontext"
-version = "0.0.1"
-description = "Minimal jhcontext SDK for drafts and testing"
-authors = ["jhcontext@noreply.com"]
+version = "0.2.1"
+description = "PAC-AI: Protocol for Auditable Context in AI — Python SDK"
+requires-python = ">=3.10"
 license = "Apache-2.0"
+authors = [
+    {name = "jh", email = "jh@jhcontext.com"},
+]
 readme = "README.md"
-packages = [{ include = "jhcontext" }]
+keywords = ["provenance", "multi-agent", "ai-act", "auditability", "w3c-prov", "context-management"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "rdflib>=7.0",
+    "httpx>=0.27",
+]
 
-[tool.poetry.dependencies]
-python = "^3.9"
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "mcp>=1.0",
+    "aiosqlite>=0.20",
+    "cryptography>=44.0",
+]
+crewai = [
+    "crewai>=1.9",
+    "crewai-tools>=1.9",
+]
+all = ["jhcontext[server,crewai]"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "pytest-asyncio",
+]
+
+[project.scripts]
+jhcontext = "jhcontext.cli:main"
+
+[project.urls]
+Repository = "https://github.com/jhcontext/jhcontext-sdk"
+Documentation = "https://github.com/jhcontext/jhcontext-sdk#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jhcontext"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
