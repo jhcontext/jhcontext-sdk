@@ -1,6 +1,6 @@
 # jhcontext SDK
 
-**PAC-AI: Protocol for Auditable Context in AI** — Python SDK v0.2.0
+**PAC-AI: Protocol for Auditable Context in AI** — Python SDK
 
 A Python toolkit for building, signing, auditing, and serving AI context envelopes compliant with the PAC-AI protocol. Designed for EU AI Act compliance scenarios including temporal oversight (Art. 14) and negative proof (Art. 13).
 

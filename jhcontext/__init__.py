@@ -38,7 +38,7 @@ from .crypto import compute_sha256, compute_content_hash, sign_envelope, verify_
 from .canonicalize import canonicalize
 from .semantics import observation, interpretation, situation, userml_payload
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 __all__ = [
     # Models
