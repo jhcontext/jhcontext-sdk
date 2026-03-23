@@ -74,7 +74,10 @@ echo "Committing and tagging..."
 git add -A
 git commit -m "v$NEW_VERSION — $DESCRIPTION"
 git tag "v$NEW_VERSION"
-git push origin main --tags
+# Push commit first, then tag separately — pushing together causes
+# GitHub Actions to fire only the branch event, skipping the publish job.
+git push origin main
+git push origin "v$NEW_VERSION"
 
 echo ""
 echo "=== v$NEW_VERSION pushed ==="
