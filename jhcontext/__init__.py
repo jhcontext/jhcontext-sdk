@@ -53,7 +53,7 @@ from .semantics import observation, interpretation, situation, userml_payload
 from .forwarding import ForwardingEnforcer
 from .persistence import StepPersister
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 __all__ = [
     # Models
