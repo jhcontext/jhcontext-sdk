@@ -40,6 +40,29 @@ class EnvelopeStatus(str, Enum):
     DELETED = "deleted"
 
 
+class ForwardingPolicy(str, Enum):
+    SEMANTIC_FORWARD = "semantic_forward"  # Next consumer reads only semantic_payload
+    RAW_FORWARD = "raw_forward"            # Next consumer reads full raw output
+
+    def format_preamble(self, risk_level: str = "") -> str:
+        """Generate task execution instructions from this policy.
+
+        Returns a constraint string for SEMANTIC_FORWARD, empty for RAW_FORWARD.
+        Agent runtimes prepend this to task descriptions.
+        """
+        if self == ForwardingPolicy.SEMANTIC_FORWARD:
+            return (
+                f"FORWARDING POLICY: SEMANTIC-FORWARD (risk_level={risk_level})\n"
+                "You will receive a jhcontext protocol envelope. "
+                "Read ONLY the `semantic_payload` field as your canonical input. "
+                "Do NOT use raw tokens, embeddings, or any data outside the "
+                "envelope's semantic_payload. This constraint ensures audit "
+                "alignment — what you consume is exactly what the provenance "
+                "graph records.\n\n"
+            )
+        return ""
+
+
 class DataCategory(str, Enum):
     BEHAVIORAL = "behavioral"
     BIOMETRIC = "biometric"
@@ -83,6 +106,7 @@ class PrivacyBlock(BaseModel):
 class ComplianceBlock(BaseModel):
     risk_level: RiskLevel = RiskLevel.MEDIUM
     human_oversight_required: bool = False
+    forwarding_policy: ForwardingPolicy = ForwardingPolicy.RAW_FORWARD
     model_card_ref: str | None = None
     test_suite_ref: str | None = None
     escalation_path: str | None = None

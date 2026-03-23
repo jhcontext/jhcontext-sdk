@@ -10,6 +10,7 @@ from .models import (
     ComplianceBlock,
     DecisionInfluence,
     Envelope,
+    ForwardingPolicy,
     PrivacyBlock,
     RiskLevel,
     AbstractionLevel,
@@ -46,6 +47,16 @@ class EnvelopeBuilder:
 
     def set_risk_level(self, level: RiskLevel) -> EnvelopeBuilder:
         self._envelope.compliance.risk_level = level
+        # Auto-set forwarding policy from risk level (can be overridden)
+        if level == RiskLevel.HIGH:
+            self._envelope.compliance.forwarding_policy = ForwardingPolicy.SEMANTIC_FORWARD
+        else:
+            self._envelope.compliance.forwarding_policy = ForwardingPolicy.RAW_FORWARD
+        return self
+
+    def set_forwarding_policy(self, policy: ForwardingPolicy) -> EnvelopeBuilder:
+        """Override the forwarding policy (auto-set by :meth:`set_risk_level`)."""
+        self._envelope.compliance.forwarding_policy = policy
         return self
 
     def set_human_oversight(self, required: bool) -> EnvelopeBuilder:
@@ -132,13 +143,22 @@ class EnvelopeBuilder:
         self,
         risk_level: RiskLevel = RiskLevel.MEDIUM,
         human_oversight_required: bool = False,
+        forwarding_policy: ForwardingPolicy | None = None,
         model_card_ref: str | None = None,
         test_suite_ref: str | None = None,
         escalation_path: str | None = None,
     ) -> EnvelopeBuilder:
+        # Derive forwarding_policy from risk_level if not explicitly provided
+        if forwarding_policy is None:
+            forwarding_policy = (
+                ForwardingPolicy.SEMANTIC_FORWARD
+                if risk_level == RiskLevel.HIGH
+                else ForwardingPolicy.RAW_FORWARD
+            )
         self._envelope.compliance = ComplianceBlock(
             risk_level=risk_level,
             human_oversight_required=human_oversight_required,
+            forwarding_policy=forwarding_policy,
             model_card_ref=model_card_ref,
             test_suite_ref=test_suite_ref,
             escalation_path=escalation_path,

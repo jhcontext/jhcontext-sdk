@@ -15,6 +15,7 @@ from .models import (
     DecisionInfluence,
     Envelope,
     EnvelopeStatus,
+    ForwardingPolicy,
     PrivacyBlock,
     Proof,
     ProvenanceRef,
@@ -49,14 +50,16 @@ from .pii import (
 from .crypto import compute_sha256, compute_content_hash, sign_envelope, verify_envelope
 from .canonicalize import canonicalize
 from .semantics import observation, interpretation, situation, userml_payload
+from .forwarding import ForwardingEnforcer
+from .persistence import StepPersister
 
 __version__ = "0.3.0"
 
 __all__ = [
     # Models
     "Artifact", "ArtifactType", "ComplianceBlock", "Decision", "DecisionInfluence",
-    "Envelope", "EnvelopeStatus", "PrivacyBlock", "Proof", "ProvenanceRef",
-    "RiskLevel", "AbstractionLevel", "TemporalScope", "DataCategory",
+    "Envelope", "EnvelopeStatus", "ForwardingPolicy", "PrivacyBlock", "Proof",
+    "ProvenanceRef", "RiskLevel", "AbstractionLevel", "TemporalScope", "DataCategory",
     # Builder
     "EnvelopeBuilder",
     # PROV
@@ -70,6 +73,8 @@ __all__ = [
     "detach_pii", "is_pii_token", "reattach_pii", "tokenize_value",
     # Crypto
     "compute_sha256", "compute_content_hash", "sign_envelope", "verify_envelope",
+    # Forwarding & Persistence
+    "ForwardingEnforcer", "StepPersister",
     # Utilities
     "canonicalize", "observation", "interpretation", "situation", "userml_payload",
 ]

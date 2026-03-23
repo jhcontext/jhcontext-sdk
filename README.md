@@ -27,8 +27,10 @@ pip install "jhcontext[all,dev]"
 
 ```
 jhcontext/
-├── models.py          # Pydantic v2 data models (Envelope, Artifact, Decision, ...)
+├── models.py          # Pydantic v2 data models (Envelope, Artifact, Decision, ForwardingPolicy, ...)
 ├── builder.py         # EnvelopeBuilder — fluent API for constructing envelopes
+├── forwarding.py      # ForwardingEnforcer — monotonic policy enforcement + output filtering
+├── persistence.py     # StepPersister — artifact + envelope + PROV persistence orchestration
 ├── prov.py            # PROVGraph — W3C PROV graph builder (rdflib)
 ├── pii.py             # PII detection, tokenization, detachment (GDPR Art. 5/17)
 ├── audit.py           # Compliance verification (temporal oversight, negative proof, isolation, PII)
@@ -64,7 +66,7 @@ env = (
     EnvelopeBuilder()
     .set_producer("did:example:agent-1")
     .set_scope("healthcare")
-    .set_risk_level(RiskLevel.HIGH)
+    .set_risk_level(RiskLevel.HIGH)        # auto-sets forwarding_policy=semantic_forward
     .set_human_oversight(True)
     .set_semantic_payload([payload])
     .add_artifact(
@@ -78,7 +80,90 @@ env = (
 
 print(env.context_id)
 print(env.proof.content_hash)
+print(env.compliance.forwarding_policy)    # "semantic_forward"
 ```
+
+### Forwarding policy
+
+The `forwarding_policy` field in `ComplianceBlock` controls how the envelope's content
+is forwarded between tasks in a multi-agent pipeline:
+
+```python
+from jhcontext import EnvelopeBuilder, RiskLevel, ForwardingPolicy
+
+# HIGH risk → auto-sets semantic_forward
+env = EnvelopeBuilder().set_risk_level(RiskLevel.HIGH).build()
+assert env.compliance.forwarding_policy == ForwardingPolicy.SEMANTIC_FORWARD
+
+# LOW risk → auto-sets raw_forward
+env = EnvelopeBuilder().set_risk_level(RiskLevel.LOW).build()
+assert env.compliance.forwarding_policy == ForwardingPolicy.RAW_FORWARD
+
+# Explicit override (e.g., a fetch task in a HIGH-risk flow that needs raw_forward)
+env = (
+    EnvelopeBuilder()
+    .set_risk_level(RiskLevel.HIGH)
+    .set_forwarding_policy(ForwardingPolicy.RAW_FORWARD)  # override
+    .build()
+)
+```
+
+- **`semantic_forward`** — downstream consumers must read only `semantic_payload`.
+  Raw tokens, embeddings, and artifact metadata are stripped before forwarding.
+- **`raw_forward`** — downstream consumers receive the full envelope (all fields).
+
+### ForwardingEnforcer
+
+The SDK provides `ForwardingEnforcer` — a framework-agnostic class that enforces the
+monotonic forwarding constraint across a task pipeline. No CrewAI imports required.
+
+```python
+from jhcontext import ForwardingEnforcer, ForwardingPolicy, Envelope
+
+enforcer = ForwardingEnforcer()
+
+# Task 1: fetch step — raw_forward (passes raw data to classifier)
+policy = enforcer.resolve(task1_envelope)       # RAW_FORWARD
+filtered = enforcer.filter_output(task1_envelope, policy)  # full envelope JSON
+
+# Task 2: classification — semantic_forward (boundary is set)
+policy = enforcer.resolve(task2_envelope)       # SEMANTIC_FORWARD
+filtered = enforcer.filter_output(task2_envelope, policy)  # only {"semantic_payload": [...]}
+
+# Task 3: accidentally declares raw_forward → overridden
+policy = enforcer.resolve(task3_envelope)       # SEMANTIC_FORWARD (monotonic override)
+
+print(enforcer.semantic_boundary_reached)       # True
+```
+
+The agent runtime (CrewAI, LangGraph, etc.) calls `enforcer.filter_output()` and replaces
+the task's raw output with the result. The full envelope is still persisted to the backend
+for audit — nothing is lost.
+
+### StepPersister
+
+Orchestrates artifact + envelope + PROV persistence for individual pipeline steps:
+
+```python
+from jhcontext import StepPersister, ArtifactType
+from jhcontext.client.api_client import JHContextClient
+
+persister = StepPersister(client=client, builder=builder, prov=prov, context_id="ctx-abc")
+
+artifact_id = persister.persist(
+    step_name="sensor",
+    agent_id="did:hospital:sensor-agent",
+    output="raw sensor data...",
+    artifact_type=ArtifactType.TOKEN_SEQUENCE,
+    started_at="2026-03-23T10:00:00Z",
+    ended_at="2026-03-23T10:01:00Z",
+)
+
+metrics = persister.finalize_metrics(total_start=start_time)
+```
+
+Handles large artifact upload to S3 (>100 KB), envelope signing, PROV graph extension,
+and step-level metrics collection.
 
 ### Build a W3C PROV graph
 
@@ -237,6 +322,9 @@ pytest tests/ --ignore=tests/test_example.py -v
 |---------|-------------|
 | **Envelope** | Immutable context unit: semantic payload + artifacts + provenance + proof |
 | **Artifact** | Registered data object (embedding, token sequence, tool result) with content hash |
+| **Forwarding Policy** | Per-envelope control: `semantic_forward` (only `semantic_payload` visible downstream) or `raw_forward` (full envelope). Monotonic — once semantic, cannot downgrade. |
+| **ForwardingEnforcer** | Framework-agnostic monotonic policy enforcement. Resolves per-task policies and filters output for downstream consumers. |
+| **StepPersister** | Orchestrates artifact + envelope + PROV persistence for individual pipeline steps. Handles S3 upload, signing, and metrics. |
 | **PROVGraph** | W3C PROV provenance graph (entities, activities, agents, relations) |
 | **Proof** | Cryptographic integrity: canonical hash + Ed25519/HMAC signature |
 | **Audit** | Compliance checks: temporal oversight, negative proof, workflow isolation, PII detachment |
