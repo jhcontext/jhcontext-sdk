@@ -3,6 +3,25 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# ── Usage ─────────────────────────────────────────────────────────
+usage() {
+    echo "Usage: $0 [patch|minor|major|<version>] [-m <description>]"
+    echo ""
+    echo "  patch              bump patch version (default)"
+    echo "  minor              bump minor version"
+    echo "  major              bump major version"
+    echo "  <x.y.z>            set custom version"
+    echo "  -m <description>   release description (default: 'release vX.Y.Z')"
+    echo ""
+    echo "Examples:"
+    echo "  $0                 # interactive mode"
+    echo "  $0 patch           # auto patch bump"
+    echo "  $0 minor -m 'new feature'"
+    exit 0
+}
+
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
+
 # ── Get current version ────────────────────────────────────────────
 CURRENT=$(grep '^version' pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 MAJOR=$(echo "$CURRENT" | cut -d. -f1)
@@ -14,34 +33,59 @@ NEXT_PATCH="$MAJOR.$MINOR.$((PATCH + 1))"
 NEXT_MINOR="$MAJOR.$((MINOR + 1)).0"
 NEXT_MAJOR="$((MAJOR + 1)).0.0"
 
-echo "Current version: $CURRENT"
-echo ""
-echo "  1) patch  → $NEXT_PATCH   (bug fixes, small changes)"
-echo "  2) minor  → $NEXT_MINOR   (new features, backwards compatible)"
-echo "  3) major  → $NEXT_MAJOR   (breaking changes)"
-echo "  4) custom"
-echo ""
-read -rp "Bump type [1]: " CHOICE
-CHOICE=${CHOICE:-1}
+# ── Parse args or prompt interactively ─────────────────────────────
+BUMP="${1:-}"
+DESCRIPTION=""
 
-case "$CHOICE" in
-    1|patch) NEW_VERSION="$NEXT_PATCH" ;;
-    2|minor) NEW_VERSION="$NEXT_MINOR" ;;
-    3|major) NEW_VERSION="$NEXT_MAJOR" ;;
-    4|custom)
-        read -rp "Version: " NEW_VERSION
-        if [[ -z "$NEW_VERSION" ]]; then
-            echo "No version provided. Aborting."
-            exit 1
-        fi
-        ;;
-    *) echo "Invalid choice. Aborting."; exit 1 ;;
-esac
+# Parse -m flag (can be $2/$3 or $1/$2)
+shift_count=0
+while [[ $# -gt 0 ]]; do
+    case "${1:-}" in
+        -m) DESCRIPTION="${2:-}"; shift 2 ;;
+        patch|minor|major) [[ -z "$BUMP" ]] && BUMP="$1"; shift ;;
+        *) [[ -z "$BUMP" ]] && BUMP="$1"; shift ;;
+    esac
+done
 
-# ── Ask for description ────────────────────────────────────────────
-read -rp "Short description: " DESCRIPTION
-if [[ -z "$DESCRIPTION" ]]; then
-    DESCRIPTION="release v$NEW_VERSION"
+if [[ -n "$BUMP" ]]; then
+    # Non-interactive: resolve version from arg
+    case "$BUMP" in
+        patch)   NEW_VERSION="$NEXT_PATCH" ;;
+        minor)   NEW_VERSION="$NEXT_MINOR" ;;
+        major)   NEW_VERSION="$NEXT_MAJOR" ;;
+        *.*.*)   NEW_VERSION="$BUMP" ;;
+        *) echo "Invalid bump type: $BUMP"; exit 1 ;;
+    esac
+    DESCRIPTION="${DESCRIPTION:-release v$NEW_VERSION}"
+    echo "Current version: $CURRENT"
+else
+    # Interactive mode
+    echo "Current version: $CURRENT"
+    echo ""
+    echo "  1) patch  → $NEXT_PATCH   (bug fixes, small changes)"
+    echo "  2) minor  → $NEXT_MINOR   (new features, backwards compatible)"
+    echo "  3) major  → $NEXT_MAJOR   (breaking changes)"
+    echo "  4) custom"
+    echo ""
+    read -rp "Bump type [1]: " CHOICE
+    CHOICE=${CHOICE:-1}
+
+    case "$CHOICE" in
+        1|patch) NEW_VERSION="$NEXT_PATCH" ;;
+        2|minor) NEW_VERSION="$NEXT_MINOR" ;;
+        3|major) NEW_VERSION="$NEXT_MAJOR" ;;
+        4|custom)
+            read -rp "Version: " NEW_VERSION
+            if [[ -z "$NEW_VERSION" ]]; then
+                echo "No version provided. Aborting."
+                exit 1
+            fi
+            ;;
+        *) echo "Invalid choice. Aborting."; exit 1 ;;
+    esac
+
+    read -rp "Short description: " DESCRIPTION
+    DESCRIPTION="${DESCRIPTION:-release v$NEW_VERSION}"
 fi
 
 # ── Bump version in both files ─────────────────────────────────────

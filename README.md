@@ -331,6 +331,100 @@ pytest tests/ --ignore=tests/test_example.py -v
 | **PII Detachment** | Tokenize PII before storage; separate vault enables GDPR erasure without breaking audit trails |
 | **UserML** | Semantic payload format: observation → interpretation → situation layers |
 
+## CrewAI Integration: Structured Output with `FlatEnvelope`
+
+The full `Envelope` pydantic model has deeply nested types (`ComplianceBlock`, `Artifact`,
+`Proof`, `PrivacyBlock`, etc.) that can exceed LLM structured output grammar limits —
+particularly Anthropic's Haiku, which rejects schemas with too many nested object definitions.
+
+`FlatEnvelope` solves this by providing a **scalar-only** pydantic model (no nested objects,
+no `dict[str, Any]`) that any LLM can fill via structured output, then converts to a full
+`Envelope` for protocol processing.
+
+### Two options for CrewAI `output_pydantic`
+
+| Option | Model | Schema complexity | LLM compatibility | Structured guarantee |
+|--------|-------|-------------------|-------------------|---------------------|
+| `output_pydantic=FlatEnvelope` | Flat, scalar-only fields | ~10 properties, 0 nested types | All (Haiku, Sonnet, GPT, Gemini) | Strict — LLM fills exact fields |
+| *(no output_pydantic)* | Free-form JSON text | N/A | All | Loose — LLM writes JSON string, callback parses |
+
+### Using `FlatEnvelope` (recommended)
+
+```python
+from crewai import Agent, Task
+from jhcontext.flat_envelope import FlatEnvelope
+
+@task
+def sensor_task(self) -> Task:
+    return Task(
+        config=self.tasks_config["sensor_task"],
+        output_pydantic=FlatEnvelope,  # Haiku-compatible structured output
+    )
+```
+
+The task description should instruct the LLM to fill `FlatEnvelope` fields:
+
+```yaml
+sensor_task:
+  description: >
+    Collect clinical observations for patient {patient_id}.
+
+    Output a FlatEnvelope with:
+    - producer: "did:hospital:sensor-agent"
+    - scope: "healthcare_treatment_recommendation"
+    - semantic_payload_json: a JSON string containing the UserML payload
+    - artifact_id: "art-sensor"
+    - artifact_type: "token_sequence"
+    - risk_level: "high"
+    - human_oversight_required: true
+    - forwarding_policy: "raw_forward"
+```
+
+### `FlatEnvelope` fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `producer` | str | `""` | Agent DID |
+| `scope` | str | `""` | Workflow scope |
+| `semantic_payload_json` | str | `"[]"` | Semantic payload as JSON string (parsed to `list[dict]` by `to_envelope()`) |
+| `artifact_id` | str | auto-generated | Artifact identifier |
+| `artifact_type` | str | `"semantic_extraction"` | One of: `token_sequence`, `embedding`, `semantic_extraction`, `tool_result` |
+| `di_agent` | str | `""` | Decision influence agent name |
+| `di_categories` | list[str] | `[]` | Decision influence categories |
+| `risk_level` | str | `"medium"` | One of: `low`, `medium`, `high` |
+| `human_oversight_required` | bool | `false` | Oversight flag |
+| `forwarding_policy` | str | `"raw_forward"` | One of: `semantic_forward`, `raw_forward` |
+
+### Converting to full `Envelope`
+
+In your CrewAI task callback or flow code:
+
+```python
+from jhcontext.flat_envelope import FlatEnvelope
+
+# CrewAI fills this via structured output:
+flat: FlatEnvelope = output.pydantic
+
+# Convert to full protocol Envelope:
+envelope = flat.to_envelope()
+
+# Now use envelope normally:
+envelope.compliance.risk_level   # RiskLevel.HIGH
+envelope.semantic_payload        # [{"subject": "P-001", ...}]
+envelope.artifacts_registry      # [Artifact(artifact_id="art-sensor", ...)]
+```
+
+### Why not use `Envelope` directly?
+
+The full `Envelope` schema generates ~50+ JSON Schema definitions with nested `$defs` for
+`ComplianceBlock`, `Artifact`, `DecisionInfluence`, `PrivacyBlock`, `Proof`, etc. This
+causes Anthropic's API to reject the request with:
+
+> *"The compiled grammar is too large"* or *"Schema is too complex"*
+
+`FlatEnvelope` produces a schema with **0 nested `$defs`** and **10 scalar properties** —
+within any LLM provider's grammar limits.
+
 ## Protocol
 
 Based on the **PAC-AI** (Protocol for Auditable Context in AI) specification. JSON-LD schema at `jhcontext-protocol/jhcontext-core.jsonld` (v0.3).
