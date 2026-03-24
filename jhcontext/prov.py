@@ -16,8 +16,9 @@ JH = Namespace("https://jhcontext.com/vocab#")
 class PROVGraph:
     """Builder for W3C PROV provenance graphs.
 
-    Supports Entity, Activity, Agent and standard PROV relations:
-    wasGeneratedBy, used, wasAssociatedWith, wasDerivedFrom, wasInformedBy.
+    Supports Entity, Activity, Agent (including Crew delegation) and standard
+    PROV relations: wasGeneratedBy, used, wasAssociatedWith, wasDerivedFrom,
+    wasInformedBy, actedOnBehalfOf.
     """
 
     def __init__(self, context_id: str | None = None) -> None:
@@ -89,6 +90,21 @@ class PROVGraph:
             self._graph.add((uri, JH.role, Literal(role)))
         return self
 
+    # --- Crew (Agent group with delegation) ---
+
+    def add_crew(self, crew_id: str, label: str) -> PROVGraph:
+        """Register a crew as a prov:Agent + prov:SoftwareAgent.
+
+        A crew groups multiple agents that collaborate on a pipeline.
+        Individual agents are linked to the crew via ``acted_on_behalf_of``.
+        """
+        uri = self._uri(crew_id)
+        self._graph.add((uri, RDF.type, PROV.Agent))
+        self._graph.add((uri, RDF.type, PROV.SoftwareAgent))
+        self._graph.add((uri, RDFS.label, Literal(label)))
+        self._graph.add((uri, JH.agentType, Literal("crew")))
+        return self
+
     # --- Relations ---
 
     def was_generated_by(self, entity_id: str, activity_id: str) -> PROVGraph:
@@ -118,6 +134,17 @@ class PROVGraph:
     def was_informed_by(self, informed_id: str, informant_id: str) -> PROVGraph:
         self._graph.add(
             (self._uri(informed_id), PROV.wasInformedBy, self._uri(informant_id))
+        )
+        return self
+
+    def acted_on_behalf_of(self, delegate_id: str, responsible_id: str) -> PROVGraph:
+        """Record that *delegate* acted on behalf of *responsible* (W3C PROV).
+
+        Used to express crew membership: an agent that ``actedOnBehalfOf``
+        a crew-typed agent is considered a member of that crew.
+        """
+        self._graph.add(
+            (self._uri(delegate_id), PROV.actedOnBehalfOf, self._uri(responsible_id))
         )
         return self
 
@@ -189,6 +216,35 @@ class PROVGraph:
             {str(var): str(val) for var, val in zip(results.vars, row)}
             for row in results
         ]
+
+    # --- Crew Query Helpers ---
+
+    def get_crew_agents(self, crew_id: str) -> list[str]:
+        """Get all agents that acted on behalf of the given crew."""
+        crew_uri = self._uri(crew_id)
+        return [
+            str(s).split("#")[-1] if "#" in str(s) else str(s)
+            for s in self._graph.subjects(PROV.actedOnBehalfOf, crew_uri)
+        ]
+
+    def get_crew_activities(self, crew_id: str) -> list[str]:
+        """Get all activities performed by agents in the given crew."""
+        crew_uri = self._uri(crew_id)
+        activities = []
+        for agent in self._graph.subjects(PROV.actedOnBehalfOf, crew_uri):
+            for activity in self._graph.subjects(PROV.wasAssociatedWith, agent):
+                aid = str(activity).split("#")[-1] if "#" in str(activity) else str(activity)
+                if aid not in activities:
+                    activities.append(aid)
+        return activities
+
+    def get_agent_crew(self, agent_id: str) -> str | None:
+        """Get the crew an agent belongs to (via actedOnBehalfOf), or None."""
+        agent_uri = self._uri(agent_id)
+        crew = self._graph.value(agent_uri, PROV.actedOnBehalfOf)
+        if crew is None:
+            return None
+        return str(crew).split("#")[-1] if "#" in str(crew) else str(crew)
 
     @property
     def graph(self) -> Graph:

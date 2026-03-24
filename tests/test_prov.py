@@ -172,3 +172,112 @@ class TestPROVGraphSerialization:
         assert len(results) >= 1
         labels = [r["label"] for r in results]
         assert "Test Entity" in labels
+
+
+class TestPROVGraphCrewDelegation:
+    """Tests for crew-level delegation via prov:actedOnBehalfOf."""
+
+    @pytest.fixture
+    def crew_prov(self):
+        """Healthcare pipeline with a clinical crew."""
+        pg = PROVGraph("ctx-crew")
+        # Register crew
+        pg.add_crew("crew-clinical", "Clinical Pipeline Crew")
+        # Register agents and delegate to crew
+        pg.add_agent("did:hospital:sensor-agent", "Sensor Agent", role="sensor")
+        pg.add_agent("did:hospital:situation-agent", "Situation Agent", role="situation")
+        pg.add_agent("did:hospital:decision-agent", "Decision Agent", role="decision")
+        pg.acted_on_behalf_of("did:hospital:sensor-agent", "crew-clinical")
+        pg.acted_on_behalf_of("did:hospital:situation-agent", "crew-clinical")
+        pg.acted_on_behalf_of("did:hospital:decision-agent", "crew-clinical")
+        # Oversight agent outside the crew
+        pg.add_agent("did:hospital:dr-chen", "Dr. Chen", role="physician_oversight")
+        # Activities
+        pg.add_activity("act-sensor", "sensor",
+                        started_at="2026-01-01T10:00:00Z",
+                        ended_at="2026-01-01T10:01:00Z")
+        pg.add_activity("act-situation", "situation",
+                        started_at="2026-01-01T10:01:00Z",
+                        ended_at="2026-01-01T10:02:00Z")
+        pg.add_activity("act-decision", "decision",
+                        started_at="2026-01-01T10:02:00Z",
+                        ended_at="2026-01-01T10:03:00Z")
+        pg.add_activity("act-oversight", "physician_oversight",
+                        started_at="2026-01-01T10:05:00Z",
+                        ended_at="2026-01-01T10:15:00Z")
+        # Link activities to agents
+        pg.was_associated_with("act-sensor", "did:hospital:sensor-agent")
+        pg.was_associated_with("act-situation", "did:hospital:situation-agent")
+        pg.was_associated_with("act-decision", "did:hospital:decision-agent")
+        pg.was_associated_with("act-oversight", "did:hospital:dr-chen")
+        return pg
+
+    def test_add_crew(self):
+        pg = PROVGraph()
+        pg.add_crew("crew-test", "Test Crew")
+        turtle = pg.serialize()
+        assert "SoftwareAgent" in turtle
+        assert "Test Crew" in turtle
+        assert "crew" in turtle  # jh:agentType "crew"
+
+    def test_acted_on_behalf_of(self):
+        pg = PROVGraph()
+        pg.add_agent("agent-1", "Agent")
+        pg.add_crew("crew-1", "Crew")
+        pg.acted_on_behalf_of("agent-1", "crew-1")
+        turtle = pg.serialize()
+        assert "actedOnBehalfOf" in turtle
+
+    def test_get_crew_agents(self, crew_prov):
+        agents = crew_prov.get_crew_agents("crew-clinical")
+        assert len(agents) == 3
+        agent_strs = " ".join(agents)
+        assert "sensor-agent" in agent_strs
+        assert "situation-agent" in agent_strs
+        assert "decision-agent" in agent_strs
+
+    def test_get_crew_activities(self, crew_prov):
+        activities = crew_prov.get_crew_activities("crew-clinical")
+        assert len(activities) == 3
+        activity_strs = " ".join(activities)
+        assert "act-sensor" in activity_strs
+        assert "act-situation" in activity_strs
+        assert "act-decision" in activity_strs
+        # Oversight should NOT be in the crew activities
+        assert "act-oversight" not in activity_strs
+
+    def test_get_agent_crew(self, crew_prov):
+        crew = crew_prov.get_agent_crew("did:hospital:sensor-agent")
+        assert crew is not None
+        assert "crew-clinical" in crew
+
+    def test_get_agent_crew_none(self, crew_prov):
+        crew = crew_prov.get_agent_crew("did:hospital:dr-chen")
+        assert crew is None
+
+    def test_crew_sparql_query(self, crew_prov):
+        """Query all activities from a crew using raw SPARQL."""
+        results = crew_prov.query("""
+            PREFIX prov: <http://www.w3.org/ns/prov#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX jh: <https://jhcontext.com/vocab#>
+            SELECT ?activity ?label WHERE {
+                ?agent prov:actedOnBehalfOf jh:crew-clinical .
+                ?activity prov:wasAssociatedWith ?agent .
+                ?activity rdfs:label ?label .
+            }
+            ORDER BY ?activity
+        """)
+        assert len(results) == 3
+        labels = sorted(r["label"] for r in results)
+        assert labels == ["decision", "sensor", "situation"]
+
+    def test_fluent_chaining_with_crew(self):
+        pg = (
+            PROVGraph("ctx-fluent")
+            .add_crew("crew-rec", "Recommendation Crew")
+            .add_agent("agent-profile", "Profile Agent", role="profile")
+            .acted_on_behalf_of("agent-profile", "crew-rec")
+        )
+        agents = pg.get_crew_agents("crew-rec")
+        assert len(agents) == 1

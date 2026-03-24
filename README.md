@@ -193,6 +193,45 @@ used = prov.get_used_entities("ai-analysis")
 sequence = prov.get_temporal_sequence()
 ```
 
+### Crew delegation in PROV
+
+Model multi-agent crews using standard W3C PROV vocabulary (`prov:actedOnBehalfOf`).
+The PROV graph itself serves as the coordination layer — no external pipeline ID needed.
+
+```python
+from jhcontext import PROVGraph
+
+prov = PROVGraph("ctx-pipeline")
+
+# Register a crew (prov:Agent + prov:SoftwareAgent)
+prov.add_crew("crew:clinical", "Clinical Pipeline Crew")
+
+# Register agents and delegate to crew
+prov.add_agent("did:hospital:sensor", "Sensor Agent", role="sensor")
+prov.add_agent("did:hospital:decision", "Decision Agent", role="decision")
+prov.acted_on_behalf_of("did:hospital:sensor", "crew:clinical")
+prov.acted_on_behalf_of("did:hospital:decision", "crew:clinical")
+
+# Oversight agent — explicitly outside the crew
+prov.add_agent("did:hospital:dr-chen", "Dr. Chen", role="physician_oversight")
+
+# Query all activities from the crew
+activities = prov.get_crew_activities("crew:clinical")
+agents = prov.get_crew_agents("crew:clinical")
+crew = prov.get_agent_crew("did:hospital:sensor")  # "crew:clinical"
+
+# Raw SPARQL works too
+results = prov.query("""
+    PREFIX prov: <http://www.w3.org/ns/prov#>
+    PREFIX jh: <https://jhcontext.com/vocab#>
+    SELECT ?activity ?label WHERE {
+        ?agent prov:actedOnBehalfOf jh:crew-clinical .
+        ?activity prov:wasAssociatedWith ?agent .
+        ?activity rdfs:label ?label .
+    }
+""")
+```
+
 ### Run compliance audits
 
 ```python
@@ -325,7 +364,7 @@ pytest tests/ --ignore=tests/test_example.py -v
 | **Forwarding Policy** | Per-envelope control: `semantic_forward` (only `semantic_payload` visible downstream) or `raw_forward` (full envelope). Monotonic — once semantic, cannot downgrade. |
 | **ForwardingEnforcer** | Framework-agnostic monotonic policy enforcement. Resolves per-task policies and filters output for downstream consumers. |
 | **StepPersister** | Orchestrates artifact + envelope + PROV persistence for individual pipeline steps. Handles S3 upload, signing, and metrics. |
-| **PROVGraph** | W3C PROV provenance graph (entities, activities, agents, relations) |
+| **PROVGraph** | W3C PROV provenance graph (entities, activities, agents, crew delegation, relations) |
 | **Proof** | Cryptographic integrity: canonical hash + Ed25519/HMAC signature |
 | **Audit** | Compliance checks: temporal oversight, negative proof, workflow isolation, PII detachment |
 | **PII Detachment** | Tokenize PII before storage; separate vault enables GDPR erasure without breaking audit trails |
