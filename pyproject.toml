@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jhcontext"
-version = "0.3.3"
+version = "0.3.4"
 description = "PAC-AI: Protocol for Auditable Context in AI — Python SDK"
 requires-python = ">=3.10"
 license = "Apache-2.0"
