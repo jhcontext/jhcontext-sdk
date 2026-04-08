@@ -46,6 +46,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov",
     "pytest-asyncio",
+    "pytest-benchmark>=5.0",
 ]
 
 [project.scripts]
