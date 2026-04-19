@@ -131,6 +131,21 @@ class PROVGraph:
         )
         return self
 
+    def set_entity_attribute(
+        self,
+        entity_id: str,
+        attr_name: str,
+        value: Any,
+    ) -> PROVGraph:
+        """Attach a domain-specific attribute to an entity in the JH namespace.
+
+        Used for per-artifact metadata like ``rubricCriterionId``,
+        ``evidenceSpanHash``, ``promptTemplateHash`` that standard PROV
+        does not model natively.
+        """
+        self._graph.add((self._uri(entity_id), self._uri(attr_name), Literal(value)))
+        return self
+
     def was_informed_by(self, informed_id: str, informant_id: str) -> PROVGraph:
         self._graph.add(
             (self._uri(informed_id), PROV.wasInformedBy, self._uri(informant_id))

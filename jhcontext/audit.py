@@ -148,6 +148,81 @@ def verify_negative_proof(
     )
 
 
+def verify_rubric_grounding(
+    prov: PROVGraph,
+    feedback_sentence_ids: list[str],
+    submission_entity_id: str,
+) -> AuditResult:
+    """Education: Verify each LLM feedback sentence is bound to a rubric criterion
+    and grounded in a recorded evidence span of the student submission.
+
+    For every feedback-sentence entity, checks that the entity:
+      1. carries a ``rubricCriterionId`` attribute (i.e. claims to assess a criterion),
+      2. has a ``used`` edge to the declared submission entity (evidence drawn from
+         the submission, not a prior feedback sentence or unrelated source),
+      3. carries an ``evidenceSpanHash`` attribute (the hash of the cited span).
+
+    An orphan feedback sentence that claims to assess a criterion but cites no
+    evidence span, or references no submission, is flagged.
+    """
+    sequence = prov.get_temporal_sequence()  # ensures graph is queryable
+    _ = sequence  # silence unused-var if present
+
+    orphans = []
+    grounded = []
+
+    for fs_id in feedback_sentence_ids:
+        uri = prov._uri(fs_id)
+        criterion = prov._graph.value(uri, prov._uri("rubricCriterionId"))
+        span_hash = prov._graph.value(uri, prov._uri("evidenceSpanHash"))
+        used_edges = [str(o).split("#")[-1] for o in prov._graph.objects(
+            uri, prov._uri("usedSubmission")
+        )]
+        # Also accept standard prov:used edges from activities wiring this sentence
+        # back to the submission via wasDerivedFrom.
+        derived_from = [
+            str(o).split("#")[-1] for o in prov._graph.objects(
+                uri, __import__("rdflib").namespace.PROV.wasDerivedFrom
+            )
+        ]
+        submission_referenced = (
+            submission_entity_id in used_edges or submission_entity_id in derived_from
+        )
+
+        issues = []
+        if not criterion:
+            issues.append("missing_rubric_criterion_id")
+        if not span_hash:
+            issues.append("missing_evidence_span_hash")
+        if not submission_referenced:
+            issues.append("no_wasDerivedFrom_submission")
+
+        if issues:
+            orphans.append({"feedback_sentence": fs_id, "issues": issues})
+        else:
+            grounded.append(fs_id)
+
+    passed = len(orphans) == 0
+    return AuditResult(
+        check_name="rubric_grounding",
+        passed=passed,
+        evidence={
+            "submission": submission_entity_id,
+            "feedback_sentences_checked": len(feedback_sentence_ids),
+            "grounded_count": len(grounded),
+            "orphan_count": len(orphans),
+            "orphans": orphans,
+        },
+        message=(
+            f"Rubric grounding verified: {len(grounded)}/{len(feedback_sentence_ids)} "
+            f"feedback sentences bound to a rubric criterion + evidence span"
+            if passed
+            else f"RUBRIC-GROUNDING VIOLATION: {len(orphans)}/{len(feedback_sentence_ids)} "
+                 f"feedback sentences lack required bindings"
+        ),
+    )
+
+
 def verify_workflow_isolation(
     prov_a: PROVGraph,
     prov_b: PROVGraph,

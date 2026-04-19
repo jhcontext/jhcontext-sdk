@@ -33,6 +33,7 @@ from .audit import (
     verify_integrity,
     verify_negative_proof,
     verify_pii_detachment,
+    verify_rubric_grounding,
     verify_temporal_oversight,
     verify_workflow_isolation,
 )
@@ -67,7 +68,7 @@ __all__ = [
     # Audit
     "AuditReport", "AuditResult", "generate_audit_report",
     "verify_integrity", "verify_negative_proof", "verify_pii_detachment",
-    "verify_temporal_oversight", "verify_workflow_isolation",
+    "verify_rubric_grounding", "verify_temporal_oversight", "verify_workflow_isolation",
     # PII
     "DefaultPIIDetector", "InMemoryPIIVault", "PIIDetector", "PIIMatch", "PIIVault",
     "detach_pii", "is_pii_token", "reattach_pii", "tokenize_value",
