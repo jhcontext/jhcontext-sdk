@@ -15,6 +15,9 @@ class ArtifactType(str, Enum):
     EMBEDDING = "embedding"
     SEMANTIC_EXTRACTION = "semantic_extraction"
     TOOL_RESULT = "tool_result"
+    AUDIO = "audio"
+    IMAGE = "image"
+    VIDEO = "video"
 
 
 class RiskLevel(str, Enum):

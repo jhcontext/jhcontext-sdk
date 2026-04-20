@@ -223,6 +223,111 @@ def verify_rubric_grounding(
     )
 
 
+_MODALITY_SPAN_REQUIREMENTS: dict[str, tuple[str, ...]] = {
+    # text: character-level span in the source transcript/essay
+    "text": ("evidenceSpanOffset", "evidenceSpanLength"),
+    # audio: millisecond window in the source recording
+    "audio": ("evidenceStartMs", "evidenceEndMs"),
+    # image: bounding box on a still image
+    "image": ("evidenceBbox",),
+    # video: millisecond window + optional region
+    "video": ("evidenceStartMs", "evidenceEndMs"),
+}
+
+
+def verify_multimodal_binding(
+    prov: PROVGraph,
+    feedback_sentence_ids: list[str],
+    submission_entity_id: str,
+    modality: str | None = None,
+) -> AuditResult:
+    """Education: modality-aware extension of ``verify_rubric_grounding``.
+
+    Checks the three bindings ``verify_rubric_grounding`` checks
+    (``rubricCriterionId``, ``evidenceSpanHash``, ``wasDerivedFrom`` →
+    submission) *plus* modality-specific evidence-span shape.
+
+    Each feedback-sentence entity must carry ``artifactModality`` ∈
+    {``text``, ``audio``, ``image``, ``video``} and the span attributes
+    required for that modality (see ``_MODALITY_SPAN_REQUIREMENTS``). If
+    ``modality`` is supplied, every sentence must match it (strict mode);
+    otherwise per-sentence modalities are read from the graph (mixed mode).
+    """
+    import rdflib
+
+    orphans: list[dict] = []
+    grounded: list[str] = []
+    modality_counts: dict[str, int] = {}
+
+    for fs_id in feedback_sentence_ids:
+        uri = prov._uri(fs_id)
+        issues: list[str] = []
+
+        criterion = prov._graph.value(uri, prov._uri("rubricCriterionId"))
+        span_hash = prov._graph.value(uri, prov._uri("evidenceSpanHash"))
+        derived_from = [
+            str(o).split("#")[-1]
+            for o in prov._graph.objects(uri, rdflib.namespace.PROV.wasDerivedFrom)
+        ]
+        submission_referenced = submission_entity_id in derived_from
+
+        declared_modality_raw = prov._graph.value(uri, prov._uri("artifactModality"))
+        declared_modality = (
+            str(declared_modality_raw) if declared_modality_raw is not None else None
+        )
+
+        if not criterion:
+            issues.append("missing_rubric_criterion_id")
+        if not span_hash:
+            issues.append("missing_evidence_span_hash")
+        if not submission_referenced:
+            issues.append("no_wasDerivedFrom_submission")
+
+        if not declared_modality:
+            issues.append("missing_artifact_modality")
+        elif declared_modality not in _MODALITY_SPAN_REQUIREMENTS:
+            issues.append(f"unknown_modality:{declared_modality}")
+        else:
+            if modality is not None and declared_modality != modality:
+                issues.append(
+                    f"modality_mismatch:declared={declared_modality},expected={modality}"
+                )
+            for attr in _MODALITY_SPAN_REQUIREMENTS[declared_modality]:
+                if prov._graph.value(uri, prov._uri(attr)) is None:
+                    issues.append(f"missing_{attr}")
+            modality_counts[declared_modality] = (
+                modality_counts.get(declared_modality, 0) + 1
+            )
+
+        if issues:
+            orphans.append({"feedback_sentence": fs_id, "issues": issues})
+        else:
+            grounded.append(fs_id)
+
+    passed = len(orphans) == 0
+    total = len(feedback_sentence_ids)
+    return AuditResult(
+        check_name="multimodal_binding",
+        passed=passed,
+        evidence={
+            "submission": submission_entity_id,
+            "expected_modality": modality,
+            "feedback_sentences_checked": total,
+            "grounded_count": len(grounded),
+            "orphan_count": len(orphans),
+            "modality_counts": modality_counts,
+            "orphans": orphans,
+        },
+        message=(
+            f"Multimodal binding verified: {len(grounded)}/{total} sentences "
+            f"bound across modalities {modality_counts}"
+            if passed
+            else f"MULTIMODAL-BINDING VIOLATION: {len(orphans)}/{total} sentences "
+                 f"lack required modality-specific bindings"
+        ),
+    )
+
+
 def verify_workflow_isolation(
     prov_a: PROVGraph,
     prov_b: PROVGraph,
