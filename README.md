@@ -73,7 +73,7 @@ env = (
     .set_scope("healthcare")
     .set_risk_level(RiskLevel.HIGH)        # auto-sets forwarding_policy=semantic_forward
     .set_human_oversight(True)
-    .set_semantic_payload([payload])
+    .set_semantic_payload(payload)
     .add_artifact(
         artifact_id="art-vitals",
         artifact_type=ArtifactType.TOKEN_SEQUENCE,
@@ -471,7 +471,21 @@ within any LLM provider's grammar limits.
 
 ## Protocol
 
-Based on the **PAC-AI** (Protocol for Auditable Context in AI) specification. JSON-LD schema at `jhcontext-protocol/jhcontext-core.jsonld` (v0.3).
+Based on the **PAC-AI** (Protocol for Auditable Context in AI) specification. Canonical schema at [`jhcontext-protocol/jhcontext-core.jsonld`](https://github.com/jhdarosa/jhcontext-protocol/blob/main/jhcontext-core.jsonld) (v0.5).
+
+### Envelope shape (v0.5)
+
+The `semantic_payload` is a **SituationReport** — a flat list of atomic **SituationalStatements** in the sense of Heckmann (2005). Each statement has the Heckmann five-tuple `mainpart {subject, auxiliary, predicate, range, object}` where `range` names the value space and `object` names the actual value, plus optional `situation` (temporal/spatial) and `explanation` (epistemic metadata: source, creator, method, evidence, confidence) boxes, and an `administration.group` classifier for the kind of claim made.
+
+`administration.group` takes `Observation` | `Interpretation` | `Situation` | `Application` for abstraction-level classification (alongside Heckmann's native `UserModel` / `ContextModel` / `SensorData`). Audit queries typically filter on this slot.
+
+### SPARQL-indexability
+
+Because each SituationalStatement is UserML markup over RDF, envelopes are directly SPARQL-queryable against the `https://jhcontext.com/vocab#` vocabulary. The Python audit verifiers in `jhcontext.audit` are thin wrappers over SPARQL queries; worked examples are shipped in the companion [`jhcontext-usecases`](https://github.com/jhdarosa/jhcontext-usecases) repo (rubric-criterion audit, orphan-sentence verifier, oversight-routing query, negative-proof query).
+
+### v0.5 migration
+
+v0.4 and earlier conflated `range` and `object` in the mainpart and used a top-level `layer` type-tag. v0.5 restores the full Heckmann five-tuple and moves statement classification to the native `administration.group` slot. The public helpers in `jhcontext.semantics` (`observation`, `interpretation`, `situation`, `application`) produce the corrected shape automatically; `userml_payload()` has been removed in favor of atomic statements.
 
 ## License
 
