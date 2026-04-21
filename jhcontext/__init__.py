@@ -51,11 +51,11 @@ from .pii import (
 )
 from .crypto import compute_sha256, compute_content_hash, sign_envelope, verify_envelope
 from .canonicalize import canonicalize
-from .semantics import observation, interpretation, situation, userml_payload
+from .semantics import observation, interpretation, situation, application
 from .forwarding import ForwardingEnforcer
 from .persistence import StepPersister
 
-__version__ = "0.3.5"
+__version__ = "0.4.0"
 
 __all__ = [
     # Models
@@ -79,5 +79,5 @@ __all__ = [
     # Forwarding & Persistence
     "ForwardingEnforcer", "StepPersister",
     # Utilities
-    "canonicalize", "observation", "interpretation", "situation", "userml_payload",
+    "canonicalize", "observation", "interpretation", "situation", "application",
 ]

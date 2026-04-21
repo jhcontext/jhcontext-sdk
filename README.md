@@ -36,7 +36,7 @@ jhcontext/
 ├── audit.py           # Compliance verification (temporal oversight, negative proof, isolation, PII)
 ├── crypto.py          # SHA-256 hashing, Ed25519 signing (HMAC fallback)
 ├── canonicalize.py    # Deterministic JSON serialization
-├── semantics.py       # UserML semantic payload helpers
+├── semantics.py       # UserML semantic-statement helpers (v0.4 atomic, Heckmann-faithful)
 ├── cli.py             # CLI: jhcontext serve | mcp | version
 ├── client/
 │   └── api_client.py  # REST client (httpx)
@@ -54,12 +54,13 @@ jhcontext/
 ### Build and sign an envelope
 
 ```python
-from jhcontext import EnvelopeBuilder, RiskLevel, ArtifactType, observation, userml_payload
+from jhcontext import EnvelopeBuilder, RiskLevel, ArtifactType, observation, interpretation
 
-# Build semantic payload
-payload = userml_payload(
-    observations=[observation("user:alice", "temperature", 22.3)],
-)
+# Build a list of atomic semantic statements (UserML markup over RDF / external ontologies)
+payload = [
+    observation("user:alice", "temperature", 22.3, source="sensor:thermostat-01"),
+    interpretation("user:alice", "thermalComfort", "comfortable", confidence=0.92),
+]
 
 # Build envelope
 env = (
@@ -368,7 +369,7 @@ pytest tests/ --ignore=tests/test_example.py -v
 | **Proof** | Cryptographic integrity: canonical hash + Ed25519/HMAC signature |
 | **Audit** | Compliance checks: temporal oversight, negative proof, workflow isolation, PII detachment |
 | **PII Detachment** | Tokenize PII before storage; separate vault enables GDPR erasure without breaking audit trails |
-| **UserML** | Semantic payload format: observation → interpretation → situation layers |
+| **Semantic statement** | One atomic entry of `semantic_payload`. Heckmann-faithful UserML SituationalStatement: `{@model, layer, mainpart {subject, auxiliary, predicate, range}, situation?, explanation?}`. `layer` is a type-tag (observation / interpretation / situation / application). Modality lives in `mainpart.auxiliary` (e.g., `hasProperty`, `hasAssessment`, `isInSituation`, `hasPolicy`). |
 
 ## CrewAI Integration: Structured Output with `FlatEnvelope`
 
@@ -411,7 +412,7 @@ sensor_task:
     Output a FlatEnvelope with:
     - producer: "did:hospital:sensor-agent"
     - scope: "healthcare_treatment_recommendation"
-    - semantic_payload_json: a JSON string containing the UserML payload
+    - semantic_payload_json: a JSON string containing the list of semantic statements (UserML markup)
     - artifact_id: "art-sensor"
     - artifact_type: "token_sequence"
     - risk_level: "high"
@@ -425,7 +426,7 @@ sensor_task:
 |-------|------|---------|-------------|
 | `producer` | str | `""` | Agent DID |
 | `scope` | str | `""` | Workflow scope |
-| `semantic_payload_json` | str | `"[]"` | Semantic payload as JSON string (parsed to `list[dict]` by `to_envelope()`) |
+| `semantic_payload_json` | str | `"[]"` | List of semantic statements as JSON string (parsed to `list[dict]` by `to_envelope()`) |
 | `artifact_id` | str | auto-generated | Artifact identifier |
 | `artifact_type` | str | `"semantic_extraction"` | One of: `token_sequence`, `embedding`, `semantic_extraction`, `tool_result` |
 | `di_agent` | str | `""` | Decision influence agent name |

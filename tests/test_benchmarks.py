@@ -24,27 +24,30 @@ from jhcontext.prov import PROVGraph
 
 @pytest.fixture
 def sample_payload():
-    """Realistic UserML-style semantic payload used across benchmarks."""
+    """Realistic UserML v0.4 semantic payload (flat list of atomic statements)."""
+    def stmt(layer, subject, aux, pred, rng, **extras):
+        s = {"@model": "UserML", "layer": layer,
+             "mainpart": {"subject": subject, "auxiliary": aux,
+                          "predicate": pred, "range": rng}}
+        s.update(extras)
+        return s
+
     return [
-        {
-            "@model": "UserML",
-            "layers": {
-                "observation": {
-                    "vital_sign": "HR=82bpm",
-                    "lab_result": "troponin=0.04ng/mL",
-                    "imaging_finding": "CT:normal_sinus_rhythm",
-                },
-                "interpretation": {
-                    "risk_assessment": "low_cardiac_risk",
-                    "clinical_pattern": "stable_vitals",
-                },
-                "situation": {"isInSituation": "monitoring_required"},
-                "application": {
-                    "treatment_recommendation": "continue_monitoring",
-                    "confidence_score": 0.87,
-                },
-            },
-        }
+        stmt("observation", "patient:P-001", "hasVital", "heart_rate", "82bpm"),
+        stmt("observation", "patient:P-001", "hasLab", "troponin", "0.04ng/mL"),
+        stmt("observation", "patient:P-001", "hasImaging", "ct_finding",
+             "normal_sinus_rhythm"),
+        stmt("interpretation", "patient:P-001", "hasAssessment",
+             "cardiac_risk", "low",
+             explanation={"confidence": 0.87}),
+        stmt("interpretation", "patient:P-001", "hasAssessment",
+             "clinical_pattern", "stable_vitals",
+             explanation={"confidence": 0.9}),
+        stmt("situation", "patient:P-001", "isInSituation", "activity",
+             "monitoring_required",
+             explanation={"confidence": 0.9}),
+        stmt("application", "patient:P-001", "hasPolicy",
+             "treatment_recommendation", "continue_monitoring"),
     ]
 
 

@@ -7,7 +7,7 @@
   },
   "@type": "jh:Envelope",
   "context_id": "ctx-73c322d0-bc03-4860-8f72-97adbb89fa4a",
-  "schema_version": "jh:0.2",
+  "schema_version": "jh:0.4",
   "producer": "did:example:agent-1",
   "created_at": "2026-02-01T00:21:49Z",
   "ttl": "PT30M",
@@ -17,42 +17,61 @@
   "semantic_payload": [
     {
       "@model": "UserML",
-      "layers": {
-        "observation": [
-          {
-            "subject": "user:alice",
-            "predicate": "temperature",
-            "object": 22.3
-          },
-          {
-            "subject": "user:alice",
-            "predicate": "location",
-            "object": "ConferenceRoomA"
-          }
-        ],
-        "interpretation": [
-          {
-            "subject": "user:alice",
-            "predicate": "thermalComfort",
-            "object": "comfortable",
-            "confidence": 0.92
-          }
-        ],
-        "situation": [
-          {
-            "subject": "user:alice",
-            "predicate": "isInSituation",
-            "object": "meeting",
-            "start": "2026-02-01T00:21:49Z",
-            "confidence": 0.95
-          }
-        ],
-        "application": [
-          {
-            "predicate": "notificationPolicy",
-            "object": "do_not_disturb"
-          }
-        ]
+      "layer": "observation",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "hasProperty",
+        "predicate": "temperature",
+        "range": 22.3
+      },
+      "explanation": {"source": "sensor:thermostat-01"}
+    },
+    {
+      "@model": "UserML",
+      "layer": "observation",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "hasProperty",
+        "predicate": "location",
+        "range": "ConferenceRoomA"
+      },
+      "explanation": {"source": "sensor:rfid-03"}
+    },
+    {
+      "@model": "UserML",
+      "layer": "interpretation",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "hasAssessment",
+        "predicate": "thermalComfort",
+        "range": "comfortable"
+      },
+      "explanation": {
+        "confidence": 0.92,
+        "creator": "did:example:comfort-agent",
+        "method": "thermal_model_v1"
+      }
+    },
+    {
+      "@model": "UserML",
+      "layer": "situation",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "isInSituation",
+        "predicate": "activity",
+        "range": "meeting"
+      },
+      "situation": {"start": "2026-02-01T00:21:49Z"},
+      "explanation": {"confidence": 0.95}
+    },
+    {
+      "@model": "UserML",
+      "layer": "application",
+      "mainpart": {
+        "subject": "notification:n-42",
+        "auxiliary": "hasPolicy",
+        "predicate": "shouldBeDelivered",
+        "range": false
       }
     }
   ],
