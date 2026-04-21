@@ -55,7 +55,7 @@ from .semantics import observation, interpretation, situation, application
 from .forwarding import ForwardingEnforcer
 from .persistence import StepPersister
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 __all__ = [
     # Models
