@@ -36,7 +36,7 @@ jhcontext/
 ├── audit.py           # Compliance verification (temporal oversight, negative proof, isolation, PII)
 ├── crypto.py          # SHA-256 hashing, Ed25519 signing (HMAC fallback)
 ├── canonicalize.py    # Deterministic JSON serialization
-├── semantics.py       # UserML semantic-statement helpers (v0.4 atomic, Heckmann-faithful)
+├── semantics.py       # UserML SituationalStatement helpers (v0.5, Heckmann-correct five-tuple mainpart)
 ├── cli.py             # CLI: jhcontext serve | mcp | version
 ├── client/
 │   └── api_client.py  # REST client (httpx)
@@ -56,10 +56,14 @@ jhcontext/
 ```python
 from jhcontext import EnvelopeBuilder, RiskLevel, ArtifactType, observation, interpretation
 
-# Build a list of atomic semantic statements (UserML markup over RDF / external ontologies)
+# Build a SituationReport (list of atomic UserML SituationalStatements)
 payload = [
-    observation("user:alice", "temperature", 22.3, source="sensor:thermostat-01"),
-    interpretation("user:alice", "thermalComfort", "comfortable", confidence=0.92),
+    observation("user:alice", "temperature", 22.3,
+                range_="float-degrees-celsius",
+                source="sensor:thermostat-01"),
+    interpretation("user:alice", "thermalComfort", "comfortable",
+                   range_="uncomfortable-neutral-comfortable",
+                   confidence=0.92),
 ]
 
 # Build envelope
@@ -369,7 +373,7 @@ pytest tests/ --ignore=tests/test_example.py -v
 | **Proof** | Cryptographic integrity: canonical hash + Ed25519/HMAC signature |
 | **Audit** | Compliance checks: temporal oversight, negative proof, workflow isolation, PII detachment |
 | **PII Detachment** | Tokenize PII before storage; separate vault enables GDPR erasure without breaking audit trails |
-| **Semantic statement** | One atomic entry of `semantic_payload`. Heckmann-faithful UserML SituationalStatement: `{@model, layer, mainpart {subject, auxiliary, predicate, range}, situation?, explanation?}`. `layer` is a type-tag (observation / interpretation / situation / application). Modality lives in `mainpart.auxiliary` (e.g., `hasProperty`, `hasAssessment`, `isInSituation`, `hasPolicy`). |
+| **Semantic statement** | One atomic entry of `semantic_payload` (the SituationReport). Heckmann-correct UserML SituationalStatement: `{@model, mainpart {subject, auxiliary, predicate, range, object}, situation?, explanation?, administration {group, ...}}`. `range` is the value space (e.g. `low-medium-high`, `RubricCriterionURI`); `object` is the actual value. Classification lives in `administration.group` (e.g. `Observation`, `Interpretation`, `Situation`, `Application`, or Heckmann's `UserModel`/`ContextModel`/`SensorData`). Modality is in `mainpart.auxiliary`. |
 
 ## CrewAI Integration: Structured Output with `FlatEnvelope`
 

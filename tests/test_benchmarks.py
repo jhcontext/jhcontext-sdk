@@ -24,30 +24,34 @@ from jhcontext.prov import PROVGraph
 
 @pytest.fixture
 def sample_payload():
-    """Realistic UserML v0.4 semantic payload (flat list of atomic statements)."""
-    def stmt(layer, subject, aux, pred, rng, **extras):
-        s = {"@model": "UserML", "layer": layer,
+    """Realistic UserML v0.5 SituationReport (Heckmann-correct mainpart)."""
+    def stmt(group, subject, aux, pred, rng, obj, **extras):
+        s = {"@model": "UserML",
              "mainpart": {"subject": subject, "auxiliary": aux,
-                          "predicate": pred, "range": rng}}
+                          "predicate": pred, "range": rng, "object": obj},
+             "administration": {"group": group}}
         s.update(extras)
         return s
 
     return [
-        stmt("observation", "patient:P-001", "hasVital", "heart_rate", "82bpm"),
-        stmt("observation", "patient:P-001", "hasLab", "troponin", "0.04ng/mL"),
-        stmt("observation", "patient:P-001", "hasImaging", "ct_finding",
-             "normal_sinus_rhythm"),
-        stmt("interpretation", "patient:P-001", "hasAssessment",
-             "cardiac_risk", "low",
+        stmt("Observation", "patient:P-001", "hasProperty", "heart_rate",
+             "bpm-measurement", "82bpm"),
+        stmt("Observation", "patient:P-001", "hasProperty", "troponin",
+             "ng-per-mL-measurement", "0.04ng/mL"),
+        stmt("Observation", "patient:P-001", "hasProperty", "ct_finding",
+             "CTFindingEnum", "normal_sinus_rhythm"),
+        stmt("Interpretation", "patient:P-001", "hasAssessment",
+             "cardiac_risk", "low-medium-high", "low",
              explanation={"confidence": 0.87}),
-        stmt("interpretation", "patient:P-001", "hasAssessment",
-             "clinical_pattern", "stable_vitals",
+        stmt("Interpretation", "patient:P-001", "hasAssessment",
+             "clinical_pattern", "ClinicalPatternEnum", "stable_vitals",
              explanation={"confidence": 0.9}),
-        stmt("situation", "patient:P-001", "isInSituation", "activity",
-             "monitoring_required",
+        stmt("Situation", "patient:P-001", "isInSituation", "activity",
+             "CarePathwayEnum", "monitoring_required",
              explanation={"confidence": 0.9}),
-        stmt("application", "patient:P-001", "hasPolicy",
-             "treatment_recommendation", "continue_monitoring"),
+        stmt("Application", "patient:P-001", "hasPolicy",
+             "treatment_recommendation", "TreatmentEnum",
+             "continue_monitoring"),
     ]
 
 

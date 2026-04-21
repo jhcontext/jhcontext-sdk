@@ -38,9 +38,9 @@ class TestEnvelopeBuilder:
     def test_semantic_payload(self):
         payload = [{
             "@model": "UserML",
-            "layer": "observation",
             "mainpart": {"subject": "u:1", "auxiliary": "hasProperty",
-                         "predicate": "x", "range": 1},
+                         "predicate": "x", "range": "integer", "object": 1},
+            "administration": {"group": "Observation"},
         }]
         env = (
             EnvelopeBuilder()
