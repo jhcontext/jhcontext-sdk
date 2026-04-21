@@ -36,7 +36,12 @@ class TestEnvelopeBuilder:
         assert env.compliance.human_oversight_required is True
 
     def test_semantic_payload(self):
-        payload = [{"@model": "UserML", "layers": {}}]
+        payload = [{
+            "@model": "UserML",
+            "mainpart": {"subject": "u:1", "auxiliary": "hasProperty",
+                         "predicate": "x", "range": "integer", "object": 1},
+            "administration": {"group": "Observation"},
+        }]
         env = (
             EnvelopeBuilder()
             .set_producer("did:example:1")

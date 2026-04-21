@@ -7,7 +7,7 @@
   },
   "@type": "jh:Envelope",
   "context_id": "ctx-73c322d0-bc03-4860-8f72-97adbb89fa4a",
-  "schema_version": "jh:0.2",
+  "schema_version": "jh:0.5",
   "producer": "did:example:agent-1",
   "created_at": "2026-02-01T00:21:49Z",
   "ttl": "PT30M",
@@ -17,43 +17,67 @@
   "semantic_payload": [
     {
       "@model": "UserML",
-      "layers": {
-        "observation": [
-          {
-            "subject": "user:alice",
-            "predicate": "temperature",
-            "object": 22.3
-          },
-          {
-            "subject": "user:alice",
-            "predicate": "location",
-            "object": "ConferenceRoomA"
-          }
-        ],
-        "interpretation": [
-          {
-            "subject": "user:alice",
-            "predicate": "thermalComfort",
-            "object": "comfortable",
-            "confidence": 0.92
-          }
-        ],
-        "situation": [
-          {
-            "subject": "user:alice",
-            "predicate": "isInSituation",
-            "object": "meeting",
-            "start": "2026-02-01T00:21:49Z",
-            "confidence": 0.95
-          }
-        ],
-        "application": [
-          {
-            "predicate": "notificationPolicy",
-            "object": "do_not_disturb"
-          }
-        ]
-      }
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "hasProperty",
+        "predicate": "temperature",
+        "range": "float-degrees-celsius",
+        "object": 22.3
+      },
+      "explanation":    {"source": "sensor:thermostat-01"},
+      "administration": {"group": "Observation"}
+    },
+    {
+      "@model": "UserML",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "hasProperty",
+        "predicate": "location",
+        "range": "LocationEnum",
+        "object": "ConferenceRoomA"
+      },
+      "explanation":    {"source": "sensor:rfid-03"},
+      "administration": {"group": "Observation"}
+    },
+    {
+      "@model": "UserML",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "hasAssessment",
+        "predicate": "thermalComfort",
+        "range": "uncomfortable-neutral-comfortable",
+        "object": "comfortable"
+      },
+      "explanation": {
+        "confidence": 0.92,
+        "creator": "did:example:comfort-agent",
+        "method": "thermal_model_v1"
+      },
+      "administration": {"group": "Interpretation"}
+    },
+    {
+      "@model": "UserML",
+      "mainpart": {
+        "subject": "user:alice",
+        "auxiliary": "isInSituation",
+        "predicate": "activity",
+        "range": "meeting|commute|idle|focus",
+        "object": "meeting"
+      },
+      "situation":      {"start": "2026-02-01T00:21:49Z", "durability": "few minutes"},
+      "explanation":    {"confidence": 0.95},
+      "administration": {"group": "Situation"}
+    },
+    {
+      "@model": "UserML",
+      "mainpart": {
+        "subject": "notification:n-42",
+        "auxiliary": "hasPolicy",
+        "predicate": "shouldBeDelivered",
+        "range": "boolean",
+        "object": false
+      },
+      "administration": {"group": "Application"}
     }
   ],
   "provenance_ref": {

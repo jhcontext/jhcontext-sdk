@@ -31,8 +31,10 @@ from .audit import (
     AuditResult,
     generate_audit_report,
     verify_integrity,
+    verify_multimodal_binding,
     verify_negative_proof,
     verify_pii_detachment,
+    verify_rubric_grounding,
     verify_temporal_oversight,
     verify_workflow_isolation,
 )
@@ -49,11 +51,11 @@ from .pii import (
 )
 from .crypto import compute_sha256, compute_content_hash, sign_envelope, verify_envelope
 from .canonicalize import canonicalize
-from .semantics import observation, interpretation, situation, userml_payload
+from .semantics import observation, interpretation, situation, application
 from .forwarding import ForwardingEnforcer
 from .persistence import StepPersister
 
-__version__ = "0.3.4"
+__version__ = "0.5.0"
 
 __all__ = [
     # Models
@@ -66,7 +68,8 @@ __all__ = [
     "PROVGraph",
     # Audit
     "AuditReport", "AuditResult", "generate_audit_report",
-    "verify_integrity", "verify_negative_proof", "verify_pii_detachment",
+    "verify_integrity", "verify_multimodal_binding", "verify_negative_proof",
+    "verify_pii_detachment", "verify_rubric_grounding",
     "verify_temporal_oversight", "verify_workflow_isolation",
     # PII
     "DefaultPIIDetector", "InMemoryPIIVault", "PIIDetector", "PIIMatch", "PIIVault",
@@ -76,5 +79,5 @@ __all__ = [
     # Forwarding & Persistence
     "ForwardingEnforcer", "StepPersister",
     # Utilities
-    "canonicalize", "observation", "interpretation", "situation", "userml_payload",
+    "canonicalize", "observation", "interpretation", "situation", "application",
 ]
