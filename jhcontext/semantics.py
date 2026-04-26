@@ -131,6 +131,56 @@ def application(subject: str, predicate: str, object_: Any,
                       range_=range_)
 
 
+def userml_payload(
+    observations: list[dict] | None = None,
+    interpretations: list[dict] | None = None,
+    situations: list[dict] | None = None,
+    applications: list[dict] | None = None,
+) -> dict:
+    """Bundle UserML SituationalStatements into one SituationReport entry.
+
+    The returned dict occupies a **single** slot in an envelope's
+    ``semantic_payload``. This is the bundled-envelope pattern used by the
+    protocol's rubric-grounded feedback scenario: one envelope per
+    submission carrying N per-sentence Interpretation+Application pairs
+    without inflating envelope count.
+
+    Inputs:
+      observations / interpretations: lists of statements already in UserML
+        shape (built via ``observation()`` / ``interpretation()``).
+      situations: shorthand dicts ``{subject, object, confidence?}``
+        (``object`` is the situation type) — normalized into UserML via
+        ``situation()``. The ``predicate`` key, if present, is ignored
+        because UserML hardcodes ``activity`` for Situation statements.
+      applications: shorthand dicts ``{subject, predicate, object,
+        auxiliary?, range?}`` — normalized into UserML via ``application()``.
+    """
+    statements: list[dict] = []
+    if observations:
+        statements.extend(observations)
+    if interpretations:
+        statements.extend(interpretations)
+    for s in (situations or []):
+        statements.append(situation(
+            subject=s["subject"],
+            situation_type=s["object"],
+            range_=s.get("range"),
+            confidence=s.get("confidence", 0.9),
+        ))
+    for a in (applications or []):
+        statements.append(application(
+            subject=a["subject"],
+            predicate=a["predicate"],
+            object_=a["object"],
+            range_=a.get("range"),
+            auxiliary=a.get("auxiliary", "hasPolicy"),
+        ))
+    return {
+        "@model": "UserML-SituationReport",
+        "statements": statements,
+    }
+
+
 def sample_smart_office(user_id: str, now_iso: str) -> list[dict]:
     """Smart-office scenario as a v0.5 SituationReport (list of statements)."""
     return [
