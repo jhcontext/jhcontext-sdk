@@ -483,7 +483,7 @@ Because each SituationalStatement is UserML markup over RDF, envelopes are direc
 
 ### v0.5 migration
 
-v0.4 and earlier conflated `range` and `object` in the mainpart and used a top-level `layer` type-tag. v0.5 restores the full Heckmann five-tuple and moves statement classification to the native `administration.group` slot. The public helpers in `jhcontext.semantics` (`observation`, `interpretation`, `situation`, `application`) produce the corrected shape automatically; `userml_payload()` has been removed in favor of atomic statements.
+v0.4 and earlier conflated `range` and `object` in the mainpart and used a top-level `layer` type-tag. v0.5 restores the full Heckmann five-tuple and moves statement classification to the native `administration.group` slot. The public helpers in `jhcontext.semantics` (`observation`, `interpretation`, `situation`, `application`) produce the corrected shape automatically. A `userml_payload()` bundler is also exported as a convenience for grouping multiple statements into a single SituationReport entry (used by ontology helpers and several non-paper scenarios); the paper-canonical pattern is to build a flat list of atomic statements and pass it directly to `set_semantic_payload(...)`.
 
 ## License
 

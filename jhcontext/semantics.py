@@ -136,14 +136,19 @@ def userml_payload(
     interpretations: list[dict] | None = None,
     situations: list[dict] | None = None,
     applications: list[dict] | None = None,
+    application: list[dict] | None = None,
 ) -> dict:
     """Bundle UserML SituationalStatements into one SituationReport entry.
 
     The returned dict occupies a **single** slot in an envelope's
-    ``semantic_payload``. This is the bundled-envelope pattern used by the
-    protocol's rubric-grounded feedback scenario: one envelope per
-    submission carrying N per-sentence Interpretation+Application pairs
-    without inflating envelope count.
+    ``semantic_payload``. This is the bundled-envelope variant pattern
+    used by ontology helpers and several non-education scenarios (one
+    envelope carrying N grouped statements without inflating envelope
+    count). For the paper-canonical flat-array shape (one statement per
+    ``semantic_payload`` slot, as in Figure 1 of the rubric-grounded
+    feedback scenario), build a list of ``observation()`` /
+    ``interpretation()`` / ``situation()`` / ``application()`` directly
+    instead.
 
     Inputs:
       observations / interpretations: lists of statements already in UserML
@@ -152,8 +157,11 @@ def userml_payload(
         (``object`` is the situation type) — normalized into UserML via
         ``situation()``. The ``predicate`` key, if present, is ignored
         because UserML hardcodes ``activity`` for Situation statements.
-      applications: shorthand dicts ``{subject, predicate, object,
-        auxiliary?, range?}`` — normalized into UserML via ``application()``.
+      applications / application: shorthand dicts ``{subject, predicate,
+        object, auxiliary?, range?}`` — normalized into UserML via the
+        ``application()`` helper. ``application=`` is accepted for
+        backward compatibility with older call sites; ``applications=``
+        is preferred.
     """
     statements: list[dict] = []
     if observations:
@@ -167,13 +175,15 @@ def userml_payload(
             range_=s.get("range"),
             confidence=s.get("confidence", 0.9),
         ))
-    for a in (applications or []):
-        statements.append(application(
-            subject=a["subject"],
-            predicate=a["predicate"],
-            object_=a["object"],
+    apps_input = applications if applications is not None else application
+    for a in (apps_input or []):
+        statements.append(_statement(
+            "Application",
+            a["subject"],
+            a.get("auxiliary", "hasPolicy"),
+            a["predicate"],
+            a["object"],
             range_=a.get("range"),
-            auxiliary=a.get("auxiliary", "hasPolicy"),
         ))
     return {
         "@model": "UserML-SituationReport",
