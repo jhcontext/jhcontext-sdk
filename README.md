@@ -119,31 +119,40 @@ env = (
 
 ### ForwardingEnforcer
 
-The SDK provides `ForwardingEnforcer` — a framework-agnostic class that enforces the
-monotonic forwarding constraint across a task pipeline. No CrewAI imports required.
+`ForwardingEnforcer` enforces a uniform forwarding policy across one pipeline.
+The policy is fixed at construction; every task envelope must declare the same
+policy or `resolve()` raises `ForwardingPolicyViolation`. To combine raw and
+semantic stages, **compose two pipelines** — the raw pipeline's output becomes
+the input to a separate semantic pipeline.
 
 ```python
-from jhcontext import ForwardingEnforcer, ForwardingPolicy, Envelope
+from jhcontext import (
+    Envelope, ForwardingEnforcer, ForwardingPolicy,
+    ForwardingPolicyViolation,
+)
 
-enforcer = ForwardingEnforcer()
+# Stage 1: raw extraction
+raw = ForwardingEnforcer(ForwardingPolicy.RAW_FORWARD)
+for env in raw_pipeline_tasks:
+    policy = raw.resolve(env)                      # RAW_FORWARD
+    forward_payload = raw.filter_output(env, policy)  # full envelope JSON
 
-# Task 1: fetch step — raw_forward (passes raw data to classifier)
-policy = enforcer.resolve(task1_envelope)       # RAW_FORWARD
-filtered = enforcer.filter_output(task1_envelope, policy)  # full envelope JSON
+# Stage 2: semantic decision (consumes stage-1 terminal artifact)
+sem = ForwardingEnforcer(ForwardingPolicy.SEMANTIC_FORWARD)
+for env in decision_pipeline_tasks:
+    policy = sem.resolve(env)                      # SEMANTIC_FORWARD
+    forward_payload = sem.filter_output(env, policy)  # {"semantic_payload": [...]}
 
-# Task 2: classification — semantic_forward (boundary is set)
-policy = enforcer.resolve(task2_envelope)       # SEMANTIC_FORWARD
-filtered = enforcer.filter_output(task2_envelope, policy)  # only {"semantic_payload": [...]}
-
-# Task 3: accidentally declares raw_forward → overridden
-policy = enforcer.resolve(task3_envelope)       # SEMANTIC_FORWARD (monotonic override)
-
-print(enforcer.semantic_boundary_reached)       # True
+# A mismatched declaration is a hard error, not a silent override:
+try:
+    sem.resolve(some_raw_task_envelope)
+except ForwardingPolicyViolation as exc:
+    ...
 ```
 
-The agent runtime (CrewAI, LangGraph, etc.) calls `enforcer.filter_output()` and replaces
-the task's raw output with the result. The full envelope is still persisted to the backend
-for audit — nothing is lost.
+The agent runtime (CrewAI, LangGraph, etc.) calls `enforcer.filter_output()`
+between tasks. The full envelope is still persisted to the backend for audit —
+the filter only governs what crosses the handoff.
 
 ### StepPersister
 

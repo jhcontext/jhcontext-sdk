@@ -129,7 +129,7 @@ class TestEnvelope:
     def test_defaults(self):
         env = Envelope()
         assert env.context_id.startswith("ctx-")
-        assert env.schema_version == "jh:0.3"
+        assert env.schema_version == "jh:0.5"
         assert env.producer == ""
         assert env.status == EnvelopeStatus.ACTIVE
         assert env.semantic_payload == []

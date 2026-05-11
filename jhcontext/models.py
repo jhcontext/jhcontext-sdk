@@ -131,7 +131,7 @@ class Proof(BaseModel):
 
 class Envelope(BaseModel):
     context_id: str = Field(default_factory=lambda: f"ctx-{uuid.uuid4()}")
-    schema_version: str = "jh:0.3"
+    schema_version: str = "jh:0.5"
     producer: str = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     ttl: str = "PT30M"
@@ -156,6 +156,7 @@ class Envelope(BaseModel):
             "jh": "https://jhcontext.com/vocab#",
             "prov": "http://www.w3.org/ns/prov#",
             "xsd": "http://www.w3.org/2001/XMLSchema#",
+            "@vocab": "https://jhcontext.com/vocab#",
         }
         d["@type"] = "jh:Envelope"
         return d

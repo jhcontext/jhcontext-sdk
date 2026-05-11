@@ -30,19 +30,32 @@ class TestComputeSha256:
 
 
 class TestComputeContentHash:
+    """Content-hashing exercises URDNA2015 over a JSON-LD doc (or sorted-JSON
+    fallback when pyld is unavailable). Plain dicts without an `@context`
+    produce no RDF triples and therefore no distinguishing canonical form, so
+    these tests use minimal JSON-LD documents."""
+
+    @staticmethod
+    def _doc(**fields):
+        return {
+            "@context": {"@vocab": "https://jhcontext.com/vocab#"},
+            "@type": "jh:Envelope",
+            **fields,
+        }
+
     def test_dict_hash(self):
-        h = compute_content_hash({"key": "value"})
+        h = compute_content_hash(self._doc(key="value"))
         assert isinstance(h, str)
         assert len(h) == 64
 
     def test_deterministic_regardless_of_key_order(self):
-        h1 = compute_content_hash({"a": 1, "b": 2})
-        h2 = compute_content_hash({"b": 2, "a": 1})
+        h1 = compute_content_hash(self._doc(a=1, b=2))
+        h2 = compute_content_hash(self._doc(b=2, a=1))
         assert h1 == h2
 
     def test_different_dicts_different_hashes(self):
-        h1 = compute_content_hash({"key": "value1"})
-        h2 = compute_content_hash({"key": "value2"})
+        h1 = compute_content_hash(self._doc(key="value1"))
+        h2 = compute_content_hash(self._doc(key="value2"))
         assert h1 != h2
 
 
@@ -53,6 +66,18 @@ class TestSignAndVerify:
         assert proof.content_hash is not None
         assert proof.signature is not None
         assert proof.signer == "did:example:signer"
+        # Default canonicalization is deterministic-JSON. URDNA2015 is opt-in
+        # via builder.set_canonicalization("URDNA2015") or sign_envelope(mode=).
+        assert proof.canonicalization == "deterministic-json"
+
+    def test_sign_with_urdna2015_mode(self):
+        try:
+            import pyld  # noqa: F401
+        except ImportError:
+            import pytest
+            pytest.skip("pyld not installed")
+        env = EnvelopeBuilder().set_producer("did:example:1").build()
+        proof = sign_envelope(env, "did:example:signer", mode="URDNA2015")
         assert proof.canonicalization == "URDNA2015"
 
     def test_verify_signed_envelope(self):

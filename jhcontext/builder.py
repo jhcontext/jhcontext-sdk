@@ -17,7 +17,7 @@ from .models import (
     TemporalScope,
 )
 from .crypto import compute_sha256
-from .canonicalize import canonicalize
+from .canonicalize import algorithm as canonicalization_algorithm, canonicalize
 
 if TYPE_CHECKING:
     from .pii import PIIDetector, PIIVault
@@ -32,6 +32,17 @@ class EnvelopeBuilder:
         self._pii_vault: PIIVault | None = None
         self._pii_enabled: bool = False
         self._signer_did: str | None = None
+        self._canonicalization_mode: str | None = None
+
+    def set_canonicalization(self, mode: str) -> EnvelopeBuilder:
+        """Choose the canonicalization algorithm for this envelope.
+
+        Accepts ``"URDNA2015"`` (W3C RDF Dataset Canonicalization, default)
+        or ``"deterministic-json"`` (sorted-key compact JSON, ~75x faster).
+        The active algorithm is recorded in ``proof.canonicalization``.
+        """
+        self._canonicalization_mode = mode
+        return self
 
     def set_producer(self, producer_did: str) -> EnvelopeBuilder:
         self._envelope.producer = producer_did
@@ -183,8 +194,15 @@ class EnvelopeBuilder:
 
     def sign(self, signer_did: str) -> EnvelopeBuilder:
         """Mark the envelope for signing. Actual signing is deferred to build()
-        so that PII detachment (which modifies the payload) happens first."""
+        so that PII detachment (which modifies the payload) happens first.
+
+        Clears any pre-existing proof so a subsequent build() always re-signs.
+        Otherwise a builder that was previously built (e.g. for per-task
+        persistence) would keep the old signer + content_hash, which then
+        fail verification once the envelope has been mutated further.
+        """
         self._signer_did = signer_did
+        self._envelope.proof = type(self._envelope.proof)()
         return self
 
     def build(self) -> Envelope:
@@ -218,12 +236,22 @@ class EnvelopeBuilder:
         # Step 2: Sign (deferred from .sign() call)
         if self._signer_did and not self._envelope.proof.signature:
             from .crypto import sign_envelope
-            self._envelope.proof = sign_envelope(self._envelope, self._signer_did)
+            self._envelope.proof = sign_envelope(
+                self._envelope,
+                self._signer_did,
+                mode=self._canonicalization_mode,
+            )
 
         # Step 3: Content hash fallback (if not signed)
         if not self._envelope.proof.content_hash:
-            canonical = canonicalize(self._envelope.to_jsonld(include_proof=False))
+            canonical = canonicalize(
+                self._envelope.to_jsonld(include_proof=False),
+                mode=self._canonicalization_mode,
+            )
             self._envelope.proof.content_hash = compute_sha256(
                 canonical.encode("utf-8")
+            )
+            self._envelope.proof.canonicalization = canonicalization_algorithm(
+                self._canonicalization_mode
             )
         return self._envelope

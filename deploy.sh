@@ -105,10 +105,30 @@ echo "  pyproject.toml: $V_TOML"
 echo "  __init__.py:    $V_INIT"
 
 # ── Run tests ──────────────────────────────────────────────────────
+# Surgical revert helper: undoes ONLY the version-line bump if tests fail,
+# so unrelated in-flight changes in pyproject.toml / __init__.py survive.
+revert_version_only() {
+    sed -i "s/^version = \"$NEW_VERSION\"/version = \"$CURRENT\"/" pyproject.toml
+    sed -i "s/__version__ = \"$NEW_VERSION\"/__version__ = \"$CURRENT\"/" jhcontext/__init__.py
+}
+
 echo "Running tests..."
-python -m pytest tests/ --ignore=tests/test_example.py -q || {
+# Prefer uv (the project's dependency manager) so pytest + extras resolve
+# correctly; fall back to a bare python only if uv is unavailable.
+if command -v uv >/dev/null 2>&1; then
+    TEST_CMD=(uv run --all-extras python -m pytest tests/ --ignore=tests/test_example.py -q)
+else
+    PYTHON="${PYTHON:-$(command -v python3 || command -v python || true)}"
+    if [[ -z "$PYTHON" ]]; then
+        echo "ERROR: no uv, python3, or python found on PATH"
+        revert_version_only
+        exit 1
+    fi
+    TEST_CMD=("$PYTHON" -m pytest tests/ --ignore=tests/test_example.py -q)
+fi
+"${TEST_CMD[@]}" || {
     echo "Tests failed. Fix before releasing."
-    git checkout -- pyproject.toml jhcontext/__init__.py
+    revert_version_only
     exit 1
 }
 

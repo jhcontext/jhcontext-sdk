@@ -1,13 +1,21 @@
-"""Cryptographic utilities for PAC-AI: hashing, signing, verification."""
+"""Cryptographic utilities for PAC-AI: hashing, signing, verification.
+
+Ed25519 keys are persisted under ``$JHCONTEXT_KEYSTORE_DIR``
+(default: ``~/.jhcontext/keys``) so that signing in one process and
+verification in another (e.g. local API server) resolve the same public key.
+The path is configurable for tests and CI runs.
+"""
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
-import json
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .canonicalize import canonicalize
+from .canonicalize import algorithm as canonicalization_algorithm, canonicalize
 from .models import Proof
 
 if TYPE_CHECKING:
@@ -25,33 +33,99 @@ def compute_content_hash(obj: dict) -> str:
     return compute_sha256(canonical.encode("utf-8"))
 
 
-def sign_envelope(envelope: "Envelope", signer_did: str) -> Proof:
+def _keystore_dir() -> Path:
+    """Resolve the keystore directory from env or fall back to ~/.jhcontext/keys."""
+    env = os.environ.get("JHCONTEXT_KEYSTORE_DIR")
+    if env:
+        return Path(env)
+    return Path.home() / ".jhcontext" / "keys"
+
+
+def _safe_did_filename(did: str) -> str:
+    """Replace unsafe path characters in a DID for use as a filename."""
+    return did.replace("/", "_").replace(":", "_")
+
+
+def _key_paths(signer_did: str) -> tuple[Path, Path]:
+    """Return (private_key_path, public_key_path) for a signer DID."""
+    base = _keystore_dir()
+    name = _safe_did_filename(signer_did)
+    return base / f"{name}.priv", base / f"{name}.pub"
+
+
+def _load_or_create_private_key(signer_did: str):
+    """Load an Ed25519 private key for the DID, generating + persisting it on first use."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization
+
+    priv_path, pub_path = _key_paths(signer_did)
+
+    if priv_path.exists():
+        priv_bytes = priv_path.read_bytes()
+        return Ed25519PrivateKey.from_private_bytes(priv_bytes)
+
+    key = Ed25519PrivateKey.generate()
+    priv_bytes = key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    pub_bytes = key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+
+    priv_path.parent.mkdir(parents=True, exist_ok=True)
+    priv_path.write_bytes(priv_bytes)
+    priv_path.chmod(0o600)
+    pub_path.write_bytes(pub_bytes)
+
+    _KEYS[signer_did] = pub_bytes
+    return key
+
+
+def _load_public_key_bytes(signer_did: str) -> bytes | None:
+    """Return the persisted public key bytes for a signer DID, or None."""
+    if signer_did in _KEYS:
+        return _KEYS[signer_did]
+    _, pub_path = _key_paths(signer_did)
+    if pub_path.exists():
+        pub_bytes = pub_path.read_bytes()
+        _KEYS[signer_did] = pub_bytes
+        return pub_bytes
+    return None
+
+
+def sign_envelope(
+    envelope: "Envelope",
+    signer_did: str,
+    mode: str | None = None,
+) -> Proof:
     """Sign an envelope with Ed25519 (uses HMAC placeholder if cryptography not available).
 
-    In production, replace with real Ed25519 using the `cryptography` package.
-    The signature covers the canonical JSON-LD form of the envelope.
+    Parameters
+    ----------
+    envelope : Envelope
+    signer_did : str
+        DID under which the keypair is persisted in the keystore.
+    mode : str | None
+        Canonicalization mode override. When ``None`` falls back to the
+        environment / default chosen by :func:`canonicalize`. The chosen
+        algorithm is recorded in ``Proof.canonicalization`` so a verifier
+        can recompute against the same form.
     """
-    canonical = canonicalize(envelope.to_jsonld(include_proof=False))
+    canonical = canonicalize(envelope.to_jsonld(include_proof=False), mode=mode)
     content_hash = compute_sha256(canonical.encode("utf-8"))
 
     try:
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-        from cryptography.hazmat.primitives import serialization
-        import base64
-
-        private_key = Ed25519PrivateKey.generate()
+        private_key = _load_or_create_private_key(signer_did)
         signature_bytes = private_key.sign(content_hash.encode("utf-8"))
         signature = base64.urlsafe_b64encode(signature_bytes).decode("utf-8")
-
-        public_key_bytes = private_key.public_key().public_bytes(
-            serialization.Encoding.Raw, serialization.PublicFormat.Raw
-        )
-        _KEYS[signer_did] = public_key_bytes
     except ImportError:
         signature = _hmac_sign(content_hash, signer_did)
 
     return Proof(
-        canonicalization="URDNA2015",
+        canonicalization=canonicalization_algorithm(mode),
         content_hash=content_hash,
         signature=signature,
         signer=signer_did,
@@ -59,11 +133,21 @@ def sign_envelope(envelope: "Envelope", signer_did: str) -> Proof:
 
 
 def verify_envelope(envelope: "Envelope") -> bool:
-    """Verify envelope integrity: recompute hash and check signature."""
+    """Verify envelope integrity: recompute hash and check signature.
+
+    The recomputation uses the algorithm recorded in
+    ``envelope.proof.canonicalization`` so that envelopes signed with
+    deterministic-JSON still verify on a peer that has pyld installed (and
+    vice versa).
+    """
     if not envelope.proof.content_hash or not envelope.proof.signature:
         return False
 
-    canonical = canonicalize(envelope.to_jsonld(include_proof=False))
+    proof_mode = envelope.proof.canonicalization
+    canonical = canonicalize(
+        envelope.to_jsonld(include_proof=False),
+        mode=proof_mode if proof_mode else None,
+    )
     recomputed = compute_sha256(canonical.encode("utf-8"))
 
     if recomputed != envelope.proof.content_hash:
@@ -75,10 +159,10 @@ def verify_envelope(envelope: "Envelope") -> bool:
 
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-        import base64
 
-        if signer in _KEYS:
-            public_key = Ed25519PublicKey.from_public_bytes(_KEYS[signer])
+        pub_bytes = _load_public_key_bytes(signer)
+        if pub_bytes is not None:
+            public_key = Ed25519PublicKey.from_public_bytes(pub_bytes)
             sig_bytes = base64.urlsafe_b64decode(envelope.proof.signature)
             public_key.verify(sig_bytes, envelope.proof.content_hash.encode("utf-8"))
             return True
