@@ -150,45 +150,93 @@ def userml_payload(
     ``interpretation()`` / ``situation()`` / ``application()`` directly
     instead.
 
-    Inputs:
-      observations / interpretations: lists of statements already in UserML
-        shape (built via ``observation()`` / ``interpretation()``).
-      situations: shorthand dicts ``{subject, object, confidence?}``
-        (``object`` is the situation type) — normalized into UserML via
-        ``situation()``. The ``predicate`` key, if present, is ignored
-        because UserML hardcodes ``activity`` for Situation statements.
-      applications / application: shorthand dicts ``{subject, predicate,
-        object, auxiliary?, range?}`` — normalized into UserML via the
-        ``application()`` helper. ``application=`` is accepted for
-        backward compatibility with older call sites; ``applications=``
-        is preferred.
+    Inputs (all four args accept either form, symmetrically):
+
+    * **Pre-built UserML statements** — output of ``observation()`` /
+      ``interpretation()`` / ``situation()`` / ``application()``. Detected
+      by ``@model == "UserML"`` and passed through unchanged.
+    * **Shorthand dicts** — normalized into UserML by calling the matching
+      helper. Recognised keys per group:
+
+      - ``situations``: ``{subject, object, confidence?, range?}``
+        (``object`` is the situation type; ``predicate`` if present is
+        ignored because UserML hardcodes ``activity`` for Situations).
+      - ``applications`` / ``application``: ``{subject, predicate, object,
+        auxiliary?, range?}``. ``application=`` is accepted as a legacy
+        alias; ``applications=`` is preferred.
+      - ``observations``: ``{subject, predicate, object, range?, source?}``.
+      - ``interpretations``: ``{subject, predicate, object, confidence?,
+        range?, creator?, method?}``.
     """
     statements: list[dict] = []
-    if observations:
-        statements.extend(observations)
-    if interpretations:
-        statements.extend(interpretations)
+    for o in (observations or []):
+        statements.append(_normalize_observation(o))
+    for i in (interpretations or []):
+        statements.append(_normalize_interpretation(i))
     for s in (situations or []):
-        statements.append(situation(
-            subject=s["subject"],
-            situation_type=s["object"],
-            range_=s.get("range"),
-            confidence=s.get("confidence", 0.9),
-        ))
+        statements.append(_normalize_situation(s))
     apps_input = applications if applications is not None else application
     for a in (apps_input or []):
-        statements.append(_statement(
-            "Application",
-            a["subject"],
-            a.get("auxiliary", "hasPolicy"),
-            a["predicate"],
-            a["object"],
-            range_=a.get("range"),
-        ))
+        statements.append(_normalize_application(a))
     return {
         "@model": "UserML-SituationReport",
         "statements": statements,
     }
+
+
+def _is_built_statement(d: dict) -> bool:
+    """Discriminator: a built UserML statement carries ``@model='UserML'``."""
+    return d.get("@model") == "UserML"
+
+
+def _normalize_observation(o: dict) -> dict:
+    if _is_built_statement(o):
+        return o
+    return observation(
+        subject=o["subject"],
+        predicate=o["predicate"],
+        object_=o["object"],
+        range_=o.get("range"),
+        source=o.get("source"),
+    )
+
+
+def _normalize_interpretation(i: dict) -> dict:
+    if _is_built_statement(i):
+        return i
+    return interpretation(
+        subject=i["subject"],
+        predicate=i["predicate"],
+        object_=i["object"],
+        range_=i.get("range"),
+        confidence=i.get("confidence", 0.9),
+        creator=i.get("creator"),
+        method=i.get("method"),
+    )
+
+
+def _normalize_situation(s: dict) -> dict:
+    if _is_built_statement(s):
+        return s
+    return situation(
+        subject=s["subject"],
+        situation_type=s["object"],
+        range_=s.get("range"),
+        confidence=s.get("confidence", 0.9),
+    )
+
+
+def _normalize_application(a: dict) -> dict:
+    if _is_built_statement(a):
+        return a
+    return _statement(
+        "Application",
+        a["subject"],
+        a.get("auxiliary", "hasPolicy"),
+        a["predicate"],
+        a["object"],
+        range_=a.get("range"),
+    )
 
 
 def sample_smart_office(user_id: str, now_iso: str) -> list[dict]:

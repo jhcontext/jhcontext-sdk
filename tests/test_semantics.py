@@ -6,6 +6,7 @@ from jhcontext.semantics import (
     situation,
     application,
     sample_smart_office,
+    userml_payload,
 )
 
 
@@ -123,3 +124,81 @@ class TestSampleSmartOffice:
             assert "group" in stmt["administration"]
             required_mainpart_slots = {"subject", "auxiliary", "predicate", "object"}
             assert set(stmt["mainpart"].keys()) >= required_mainpart_slots
+
+
+class TestUserMLPayloadSymmetric:
+    """userml_payload accepts either pre-built UserML statements or shorthand
+    dicts for every argument. Auto-detection uses @model='UserML' as the
+    discriminator so callers using the helpers don't need to know which form
+    each kwarg historically expected."""
+
+    def test_accepts_prebuilt_situations(self):
+        sits = [situation("essay-1", "grade_assigned", confidence=0.9)]
+        payload = userml_payload(situations=sits)
+        assert len(payload["statements"]) == 1
+        stmt = payload["statements"][0]
+        assert stmt["@model"] == "UserML"
+        assert stmt["administration"]["group"] == "Situation"
+        assert stmt["mainpart"]["subject"] == "essay-1"
+
+    def test_accepts_shorthand_situations(self):
+        sits = [{"subject": "essay-1", "object": "grade_assigned",
+                 "confidence": 0.9}]
+        payload = userml_payload(situations=sits)
+        stmt = payload["statements"][0]
+        assert stmt["administration"]["group"] == "Situation"
+        assert stmt["mainpart"]["subject"] == "essay-1"
+
+    def test_prebuilt_and_shorthand_produce_equivalent_statements(self):
+        prebuilt = userml_payload(
+            situations=[situation("e-1", "graded", confidence=0.88)],
+        )
+        shorthand = userml_payload(
+            situations=[{"subject": "e-1", "object": "graded",
+                         "confidence": 0.88}],
+        )
+        assert prebuilt == shorthand
+
+    def test_accepts_prebuilt_applications(self):
+        apps = [application("e-1", "overall_grade", {"letter": "A"})]
+        payload = userml_payload(applications=apps)
+        stmt = payload["statements"][0]
+        assert stmt["administration"]["group"] == "Application"
+        assert stmt["mainpart"]["predicate"] == "overall_grade"
+
+    def test_accepts_shorthand_applications(self):
+        apps = [{"subject": "e-1", "predicate": "overall_grade",
+                 "object": {"letter": "A"}}]
+        payload = userml_payload(applications=apps)
+        stmt = payload["statements"][0]
+        assert stmt["administration"]["group"] == "Application"
+
+    def test_legacy_application_alias_still_accepted(self):
+        apps = [application("e-1", "overall_grade", "A")]
+        payload = userml_payload(application=apps)
+        assert payload["statements"][0]["administration"]["group"] == "Application"
+
+    def test_accepts_prebuilt_observations_and_interpretations(self):
+        obs = [observation("u-1", "temperature", 22.3)]
+        ints = [interpretation("u-1", "comfort", "ok", confidence=0.8)]
+        payload = userml_payload(observations=obs, interpretations=ints)
+        groups = [s["administration"]["group"] for s in payload["statements"]]
+        assert groups == ["Observation", "Interpretation"]
+
+    def test_accepts_shorthand_observations_and_interpretations(self):
+        obs = [{"subject": "u-1", "predicate": "temperature", "object": 22.3}]
+        ints = [{"subject": "u-1", "predicate": "comfort", "object": "ok",
+                 "confidence": 0.8}]
+        payload = userml_payload(observations=obs, interpretations=ints)
+        groups = [s["administration"]["group"] for s in payload["statements"]]
+        assert groups == ["Observation", "Interpretation"]
+
+    def test_mixed_prebuilt_and_shorthand_in_same_list(self):
+        sits = [
+            situation("e-1", "graded", confidence=0.9),
+            {"subject": "e-2", "object": "graded", "confidence": 0.85},
+        ]
+        payload = userml_payload(situations=sits)
+        assert len(payload["statements"]) == 2
+        assert all(s["administration"]["group"] == "Situation"
+                   for s in payload["statements"])
